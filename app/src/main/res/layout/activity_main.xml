@@ -21,8 +21,22 @@
         android:elevation="2dp"
         android:text="@string/take_photo"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintLeft_toLeftOf="parent"
-        app:layout_constraintEnd_toStartOf="@id/vertical_centerline" />
+        app:layout_constraintLeft_toLeftOf="parent"/>
+        //app:layout_constraintEnd_toStartOf="@id/vertical_centerline" />
+
+    <TextView
+        android:id="@+id/fps_textview"
+        android:layout_width="110dp"
+        android:layout_height="110dp"
+        android:layout_marginBottom="50dp"
+        android:layout_marginStart="50dp"
+        android:elevation="2dp"
+        android:text=""
+        android:textSize="20dp"
+        android:textColor="@color/cardview_dark_background"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintLeft_toRightOf="@id/image_capture_button" />
+        //app:layout_constraintEnd_toStartOf="@id/vertical_centerline" />
 
     <Button
         android:id="@+id/video_capture_button"
@@ -33,7 +47,7 @@
         android:elevation="2dp"
         android:text="@string/start_capture"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toEndOf="@id/vertical_centerline" />
+        app:layout_constraintRight_toRightOf="parent" />
 
     <androidx.constraintlayout.widget.Guideline
         android:id="@+id/vertical_centerline"

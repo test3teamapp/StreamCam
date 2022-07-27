@@ -1,11 +1,11 @@
 package com.cang.streamcam
 
 import android.Manifest
-import android.content.ContentValues
+import android.annotation.SuppressLint
 import android.content.pm.PackageManager
+import android.hardware.camera2.CaptureRequest
 import android.os.Build
 import android.os.Bundle
-import android.provider.MediaStore
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.ImageCapture
 import androidx.camera.video.Recorder
@@ -21,20 +21,14 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.core.Preview
 import androidx.camera.core.CameraSelector
 import android.util.Log
+import android.util.Range
+import androidx.camera.camera2.interop.Camera2Interop
 import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
-import androidx.camera.video.FallbackStrategy
-import androidx.camera.video.MediaStoreOutputOptions
-import androidx.camera.video.Quality
-import androidx.camera.video.QualitySelector
-import androidx.camera.video.VideoRecordEvent
-import androidx.core.content.PermissionChecker
 import java.nio.ByteBuffer
-import java.text.SimpleDateFormat
-import java.util.Locale
 
-typealias LumaListener = (luma: Double) -> Unit
+//typealias LumaListener = (luma: Double) -> Unit
+typealias StreamListener = (success: Boolean) -> Unit
 
 
 class MainActivity : AppCompatActivity() {
@@ -47,6 +41,30 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var cameraExecutor: ExecutorService
 
+    private var startCountFrameMillSecs = System.currentTimeMillis()
+    private var numOfFrames = 0
+
+    @SuppressLint("MissingSuperCall")
+    override fun onRequestPermissionsResult(
+        requestCode: Int, permissions: Array<String>, grantResults:
+        IntArray
+    ) {
+        //super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_CODE_PERMISSIONS) {
+            if (allPermissionsGranted()) {
+                startCamera()
+            } else {
+                Toast.makeText(
+                    this,
+                    "Permissions not granted by the user.",
+                    Toast.LENGTH_SHORT
+                ).show()
+                finish()
+            }
+        }
+    }
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         viewBinding = ActivityMainBinding.inflate(layoutInflater)
@@ -57,12 +75,14 @@ class MainActivity : AppCompatActivity() {
             startCamera()
         } else {
             ActivityCompat.requestPermissions(
-                this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS)
+                this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS
+            )
         }
 
         // Set up the listeners for take photo and video capture buttons
         viewBinding.imageCaptureButton.setOnClickListener { takePhoto() }
         viewBinding.videoCaptureButton.setOnClickListener { captureVideo() }
+        viewBinding.fpsTextview.setText("fps");
 
         cameraExecutor = Executors.newSingleThreadExecutor()
     }
@@ -71,11 +91,78 @@ class MainActivity : AppCompatActivity() {
 
     private fun captureVideo() {}
 
-    private fun startCamera() {}
+    @SuppressLint("UnsafeOptInUsageError")
+    private fun startCamera() {
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
+
+        cameraProviderFuture.addListener({
+            // Used to bind the lifecycle of cameras to the lifecycle owner
+            val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
+
+            // Preview
+            val preview = Preview.Builder()
+                .build()
+                .also {
+                    it.setSurfaceProvider(viewBinding.viewFinder.surfaceProvider)
+                }
+            // Analysis - for streamming
+            val analysisBuilder = ImageAnalysis.Builder()
+            val ext: Camera2Interop.Extender<*> = Camera2Interop.Extender(analysisBuilder)
+            ext.setCaptureRequestOption(
+                CaptureRequest.CONTROL_AE_MODE,
+                CaptureRequest.CONTROL_AE_MODE_OFF
+            )
+            ext.setCaptureRequestOption(
+                CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
+                Range<Int>(60, 60)
+            )
+
+            val imageAnalyzer = analysisBuilder.build();
+
+            imageAnalyzer.setAnalyzer(cameraExecutor, FrameStreamer { success ->
+                //Log.d(TAG, "Total frames analysed : $numOfFrames")
+                //Log.d(TAG, "start time (nanno seconds) : $startCountFramesNanoSecs")
+                //count frames for displaying fps
+                if (numOfFrames == 0){
+                    startCountFrameMillSecs = System.currentTimeMillis()
+                    numOfFrames += 1
+                }else {
+                    if (System.currentTimeMillis() - startCountFrameMillSecs >= (10 * 1000)){
+                        // every 10 seconds count fps and reset counter
+                        val fps = numOfFrames / 10
+                        numOfFrames = 0
+                        viewBinding.fpsTextview.setText("fps: $fps")
+                        Log.d(TAG, "fps: $fps")
+                    }else {
+                        numOfFrames += 1
+                    }
+                }
+
+            })
+
+            // Select back camera as a default
+            val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+
+            try {
+                // Unbind use cases before rebinding
+                cameraProvider.unbindAll()
+
+                // Bind use cases to camera
+                cameraProvider.bindToLifecycle(
+                    this, cameraSelector, imageAnalyzer)
+
+            } catch(exc: Exception) {
+                Log.e(TAG, "Use case binding failed", exc)
+            }
+
+        }, ContextCompat.getMainExecutor(this))
+
+    }
 
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
         ContextCompat.checkSelfPermission(
-            baseContext, it) == PackageManager.PERMISSION_GRANTED
+            baseContext, it
+        ) == PackageManager.PERMISSION_GRANTED
     }
 
     override fun onDestroy() {
@@ -84,11 +171,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
-        private const val TAG = "CameraXApp"
+        private const val TAG = "StreamCam"
         private const val FILENAME_FORMAT = "yyyy-MM-dd-HH-mm-ss-SSS"
         private const val REQUEST_CODE_PERMISSIONS = 10
         private val REQUIRED_PERMISSIONS =
-            mutableListOf (
+            mutableListOf(
                 Manifest.permission.CAMERA,
                 Manifest.permission.RECORD_AUDIO
             ).apply {
@@ -98,3 +185,26 @@ class MainActivity : AppCompatActivity() {
             }.toTypedArray()
     }
 }
+
+private class FrameStreamer(private val listener: StreamListener) : ImageAnalysis.Analyzer {
+
+    private fun ByteBuffer.toByteArray(): ByteArray {
+        rewind()    // Rewind the buffer to zero
+        val data = ByteArray(remaining())
+        get(data)   // Copy the buffer into a byte array
+        return data // Return the byte array
+    }
+
+    override fun analyze(image: ImageProxy) {
+
+//        val buffer = image.planes[0].buffer
+//        val data = buffer.toByteArray()
+//        val pixels = data.map { it.toInt() and 0xFF }
+//        val luma = pixels.average()
+
+        listener(true)
+
+        image.close()
+    }
+}
+
