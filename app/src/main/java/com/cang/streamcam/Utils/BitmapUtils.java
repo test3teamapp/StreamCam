@@ -1,4 +1,4 @@
-package com.cang.streamcam;
+package com.cang.streamcam.Utils;
 
 /*
  * Copyright 2020 Google LLC. All rights reserved.
@@ -19,7 +19,6 @@ package com.cang.streamcam;
 // taken from
 //package com.google.mlkit.vision.demo;
 
-import android.content.ContentResolver;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.ImageFormat;
@@ -28,17 +27,14 @@ import android.graphics.Rect;
 import android.graphics.YuvImage;
 import android.media.Image;
 import android.media.Image.Plane;
-import android.net.Uri;
 import android.os.Build.VERSION_CODES;
-import android.provider.MediaStore;
 import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.camera.core.ExperimentalGetImage;
 import androidx.camera.core.ImageProxy;
+
 import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
 import java.nio.ByteBuffer;
 
 /** Utils functions for bitmap conversions. */

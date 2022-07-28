@@ -1,4 +1,4 @@
-package com.cang.streamcam;
+package com.cang.streamcam.Utils;
 
 /*
  * Copyright 2020 Google LLC. All rights reserved.

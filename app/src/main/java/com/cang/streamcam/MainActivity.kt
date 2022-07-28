@@ -27,6 +27,8 @@ import android.util.Size
 import androidx.camera.camera2.interop.Camera2Interop
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
+import com.cang.streamcam.Utils.BitmapUtils
+import com.cang.streamcam.Utils.NetUtils
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 
@@ -46,6 +48,7 @@ class MainActivity : AppCompatActivity() {
 
     private var startCountFrameMillSecs = System.currentTimeMillis()
     private var numOfFrames = 0
+    private lateinit var connectedIpArray: ArrayList<String>
 
     @SuppressLint("MissingSuperCall")
     override fun onRequestPermissionsResult(
@@ -72,6 +75,10 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         viewBinding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(viewBinding.root)
+
+        // get addresses of connected devices
+        connectedIpArray = NetUtils.getArpLiveIps(true)
+        Log.d(TAG, "Connected ips : $connectedIpArray")
 
         // Request camera permissions
         if (allPermissionsGranted()) {
@@ -220,7 +227,7 @@ private class FrameStreamer(private val listener: StreamListener) : ImageAnalysi
         if (bitmap != null) {
             bitmap.compress(Bitmap.CompressFormat.JPEG, 80, bos)
             val jpgdata = bos.toByteArray()
-            Log.d(TAG, "jpg image size : ${jpgdata.size} bytes")
+            //Log.d(TAG, "jpg image size : ${jpgdata.size} bytes")
             listener(true)
         }else {
             listener(false)
