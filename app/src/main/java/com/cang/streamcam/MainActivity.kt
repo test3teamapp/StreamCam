@@ -3,6 +3,7 @@ package com.cang.streamcam
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.hardware.camera2.CaptureRequest
 import android.os.Build
 import android.os.Bundle
@@ -22,9 +23,11 @@ import androidx.camera.core.Preview
 import androidx.camera.core.CameraSelector
 import android.util.Log
 import android.util.Range
+import android.util.Size
 import androidx.camera.camera2.interop.Camera2Interop
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
+import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 
 //typealias LumaListener = (luma: Double) -> Unit
@@ -99,7 +102,7 @@ class MainActivity : AppCompatActivity() {
             // Used to bind the lifecycle of cameras to the lifecycle owner
             val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
 
-            // Preview
+            // Preview --not necessarry to be used
             val preview = Preview.Builder()
                 .build()
                 .also {
@@ -114,8 +117,14 @@ class MainActivity : AppCompatActivity() {
             )
             ext.setCaptureRequestOption(
                 CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
-                Range<Int>(60, 60)
+                Range<Int>(30, 60)
             )
+//            ext.setCaptureRequestOption(
+//                CaptureRequest.JPEG_QUALITY,80
+//            )
+
+            analysisBuilder.setTargetResolution(Size(1280, 720))
+
 
             val imageAnalyzer = analysisBuilder.build();
 
@@ -188,6 +197,7 @@ class MainActivity : AppCompatActivity() {
 
 private class FrameStreamer(private val listener: StreamListener) : ImageAnalysis.Analyzer {
 
+
     private fun ByteBuffer.toByteArray(): ByteArray {
         rewind()    // Rewind the buffer to zero
         val data = ByteArray(remaining())
@@ -195,6 +205,7 @@ private class FrameStreamer(private val listener: StreamListener) : ImageAnalysi
         return data // Return the byte array
     }
 
+    @SuppressLint("UnsafeOptInUsageError")
     override fun analyze(image: ImageProxy) {
 
 //        val buffer = image.planes[0].buffer
@@ -202,9 +213,24 @@ private class FrameStreamer(private val listener: StreamListener) : ImageAnalysi
 //        val pixels = data.map { it.toInt() and 0xFF }
 //        val luma = pixels.average()
 
-        listener(true)
+        // process ImageProxy to jpg
+        val bitmap = BitmapUtils.getBitmap(image)
+        //Convert bitmap to byte array
+        val bos = ByteArrayOutputStream()
+        if (bitmap != null) {
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 80, bos)
+            val jpgdata = bos.toByteArray()
+            Log.d(TAG, "jpg image size : ${jpgdata.size} bytes")
+            listener(true)
+        }else {
+            listener(false)
+        }
 
         image.close()
+    }
+
+    companion object {
+        private const val TAG = "FrameStreamer"
     }
 }
 
