@@ -146,7 +146,7 @@ class MainActivity : AppCompatActivity() {
             val sendData = messageStr.toByteArray()
             val sendPacket = DatagramPacket(sendData, sendData.size, broadcastIP, UDP_PORT)
             udpSocket.send(sendPacket)
-            println("fun sendBroadcast: packet sent to: $broadcastIP:$UDP_PORT")
+            println("fun sendBroadcast: \"$messageStr\" sent to: $broadcastIP:$UDP_PORT")
         } catch (e: IOException) {
             Log.e(TAG, "IOException: " + e.message)
         }
@@ -159,7 +159,7 @@ class MainActivity : AppCompatActivity() {
         try {
             val sendPacket = DatagramPacket(jpgbytes, jpgbytes.size, broadcastIP, UDP_PORT)
             udpSocket.send(sendPacket)
-            println("fun sendBroadcast: packet sent to: $broadcastIP:$UDP_PORT")
+            println("fun sendBroadcast: ${jpgbytes.size}  bytes sent to: $broadcastIP:$UDP_PORT")
         } catch (e: IOException) {
             Log.e(TAG, "IOException: " + e.message)
         }
@@ -228,7 +228,7 @@ class MainActivity : AppCompatActivity() {
 
                 // try UDP
                 if (success) {
-                    sendUDP("test $numOfFrames")
+                    sendUDP("size:${jpgbytes.size}")
                     sendUDP(jpgbytes)
                 }
 
