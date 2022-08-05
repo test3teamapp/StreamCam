@@ -31,10 +31,12 @@ import androidx.camera.core.ImageProxy
 import com.cang.streamcam.Utils.BitmapUtils
 import com.cang.streamcam.Utils.NetUtils
 import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
 import java.io.IOException
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.net.Socket
 import java.nio.ByteBuffer
 
 //typealias LumaListener = (luma: Double) -> Unit
@@ -55,7 +57,10 @@ class MainActivity : AppCompatActivity() {
     private var numOfFrames = 0
     private lateinit var connectedIpArray: ArrayList<String>
     private lateinit var broadcastIP: InetAddress
+    private lateinit var imageClientIP: InetAddress
+    private var isImageClientIPIdentified = false
     private var udpSocket = DatagramSocket()
+    private var tcpSocket = Socket()
 
     @SuppressLint("MissingSuperCall")
     override fun onRequestPermissionsResult(
@@ -86,11 +91,15 @@ class MainActivity : AppCompatActivity() {
         // get addresses of connected devices
         connectedIpArray = NetUtils.getArpLiveIps(true)
         Log.d(TAG, "Connected ips : $connectedIpArray")
-        // get broadcast addres net
-        broadcastIP = NetUtils.getBroadcast(NetUtils.getIpAddress())//InetAddress.getByName("192.168.1.12")//NetUtils.getBroadcast(NetUtils.getIpAddress())
+        // get broadcast address net
+        broadcastIP =
+            NetUtils.getBroadcast(NetUtils.getIpAddress())//InetAddress.getByName("192.168.1.12")//NetUtils.getBroadcast(NetUtils.getIpAddress())
         Log.d(TAG, "Connected ips : $connectedIpArray")
         // open udp socket
         openUDPSocket(broadcastIP)
+        if (isImageClientIPIdentified) {
+            openTCPSocket(imageClientIP)
+        }
 
         // Request camera permissions
         if (allPermissionsGranted()) {
@@ -112,14 +121,23 @@ class MainActivity : AppCompatActivity() {
     private fun openUDPSocket(inetAddress: InetAddress) {
         try {
             //Open a port to send the package
+            if (udpSocket == null){
+                udpSocket = DatagramSocket()
+            }
             if (udpSocket != null) {
+                Log.d(TAG, "openUDPSocket: socket not null")
                 if (udpSocket.isClosed) {
+                    Log.d(TAG, "openUDPSocket: socket was closed")
                     udpSocket = DatagramSocket()
                     udpSocket.broadcast = true
                 } else if (!udpSocket.isConnected) {
-                    udpSocket.connect(inetAddress, UDP_PORT)
+                    Log.d(TAG, "openUDPSocket: socket was not connected")
+                    udpSocket = DatagramSocket()
+                    //udpSocket.connect(inetAddress, UDP_PORT)
                     udpSocket.broadcast = true
                 }
+                // get remote addresses of image clients
+                sendUDP("tcp")
             }
         } catch (e: Exception) {
             Log.e(TAG, "openUDPSocket: Exception: " + e.message)
@@ -138,6 +156,74 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun openTCPSocket(inetAddress: InetAddress) {
+        try {
+            //Open a port to send the package
+            if (tcpSocket == null){
+                Socket(inetAddress.hostAddress, TCP_PORT)
+            }
+            if (tcpSocket != null) {
+                if (tcpSocket.isClosed) {
+                    tcpSocket = Socket(inetAddress.hostAddress, TCP_PORT)
+
+                } else if (!tcpSocket.isConnected) {
+                    tcpSocket.close()
+                    tcpSocket = Socket(inetAddress.hostAddress, TCP_PORT)
+
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "openTCPSocket: Exception: " + e.message)
+        }
+    }
+
+    private fun closeTCPSocket() {
+        try {
+            //Close the port
+            if (!tcpSocket.isClosed) {
+                tcpSocket.close()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "closeTCPSocket: IOException: " + e.message)
+        }
+    }
+
+    private fun writeIntTo4BytesToBuffer(data: Int) : ByteArray {
+        var buffer = ByteArray(4)
+        buffer[0] = (data shr 0).toByte()
+        buffer[1] = (data shr 8).toByte()
+        buffer[2] = (data shr 16).toByte()
+        buffer[3] = (data shr 24).toByte()
+        return buffer
+    }
+
+    private fun sendTCP(jpgbytes: ByteArray) {
+        // Hack Prevent crash (sending should be done using an async task)
+        val policy = StrictMode.ThreadPolicy.Builder().permitAll().build()
+        StrictMode.setThreadPolicy(policy)
+        try {
+            val networkWriter = DataOutputStream(tcpSocket!!.getOutputStream())
+            // add the size in the first 16 bytes
+            val newArray = writeIntTo4BytesToBuffer(jpgbytes.size) + jpgbytes
+            networkWriter.write(newArray)
+            networkWriter.flush()
+            println("fun sendTCP: ${jpgbytes.size}  bytes sent to: $imageClientIP:$TCP_PORT")
+        } catch (e: IOException) {
+            Log.e(TAG, "sendTCP: IOException: " + e.message)
+            closeTCPSocket();
+            isImageClientIPIdentified = false;
+        /*
+            // try again to open connection
+            closeTCPSocket()
+            // get the remote address
+            openUDPSocket(broadcastIP)
+            if (isImageClientIPIdentified){
+                openTCPSocket(imageClientIP)
+            }
+             */
+        }
+    }
+
     private fun sendUDP(messageStr: String) {
         // Hack Prevent crash (sending should be done using an async task)
         val policy = StrictMode.ThreadPolicy.Builder().permitAll().build()
@@ -147,8 +233,34 @@ class MainActivity : AppCompatActivity() {
             val sendPacket = DatagramPacket(sendData, sendData.size, broadcastIP, UDP_PORT)
             udpSocket.send(sendPacket)
             println("fun sendBroadcast: \"$messageStr\" sent to: $broadcastIP:$UDP_PORT")
-        } catch (e: IOException) {
-            Log.e(TAG, "IOException: " + e.message)
+
+            if (messageStr == "tcp"){
+                // wait for responces
+                val buffer = ByteArray(1024)
+                val packet = DatagramPacket(buffer, buffer.size)
+                udpSocket.soTimeout = 10000 // set timeout
+                try {
+                    udpSocket.receive(packet)
+                    val stringData = String(packet.data, packet.offset, packet.length)
+                    println("UDP packet received = " + stringData)
+                    // get remote tcp address and port
+                    imageClientIP = InetAddress.getByName(stringData.split(":")[0])
+                    isImageClientIPIdentified = true
+                    // try to open tcp
+                    if (tcpSocket.isClosed) {
+                        openTCPSocket(imageClientIP)
+                    } else {
+                        closeTCPSocket()
+                        openTCPSocket(imageClientIP)
+                    }
+                }catch (e: Exception) {
+                    // timeout exception.
+                    println("Timeout reached!!! " + e);
+
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "sendUDP: Exception: " + e.message)
         }
     }
 
@@ -161,7 +273,7 @@ class MainActivity : AppCompatActivity() {
             udpSocket.send(sendPacket)
             println("fun sendBroadcast: ${jpgbytes.size}  bytes sent to: $broadcastIP:$UDP_PORT")
         } catch (e: IOException) {
-            Log.e(TAG, "IOException: " + e.message)
+            Log.e(TAG, "sendUDP: IOException: " + e.message)
         }
     }
 
@@ -178,7 +290,10 @@ class MainActivity : AppCompatActivity() {
             val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
 
             // make sure udp socket is ready
-            openUDPSocket(broadcastIP)
+            //openUDPSocket(broadcastIP)
+            //if (isImageClientIPIdentified) {
+             //   openTCPSocket(imageClientIP)
+            //}
 
             // Preview --not necessarry to be used
             val preview = Preview.Builder()
@@ -189,20 +304,29 @@ class MainActivity : AppCompatActivity() {
             // Analysis - for streamming
             val analysisBuilder = ImageAnalysis.Builder()
             val ext: Camera2Interop.Extender<*> = Camera2Interop.Extender(analysisBuilder)
+
             ext.setCaptureRequestOption(
                 CaptureRequest.CONTROL_AE_MODE,
-                CaptureRequest.CONTROL_AE_MODE_OFF
+                CaptureRequest.CONTROL_AE_STATE_LOCKED
             )
+            ext.setCaptureRequestOption(
+                CaptureRequest.CONTROL_AF_MODE,
+                CaptureRequest.CONTROL_AF_MODE_OFF
+            )
+
+            ext.setCaptureRequestOption(
+                CaptureRequest.JPEG_QUALITY, 80
+            )
+
+
             ext.setCaptureRequestOption(
                 CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
                 Range<Int>(30, 60)
             )
-//            ext.setCaptureRequestOption(
-//                CaptureRequest.JPEG_QUALITY,80
-//            )
+
 
             //analysisBuilder.setTargetResolution(Size(1280, 720))
-            analysisBuilder.setTargetResolution(Size(1920, 1080))
+            //analysisBuilder.setTargetResolution(Size(1920, 1080))
 
 
             val imageAnalyzer = analysisBuilder.build();
@@ -226,16 +350,22 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                // try UDP
+                // try sending
                 if (success) {
                     sendUDP("size:${jpgbytes.size}")
-                    sendUDP(jpgbytes)
+                    //sendUDP(jpgbytes)
+                    if (tcpSocket.isConnected && (!tcpSocket.isClosed)) {
+                        sendTCP(jpgbytes)
+                    }else {
+                        sendUDP("tcp")
+                    }
                 }
 
             })
 
             // Select back camera as a default
             val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+            //val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
 
             try {
                 // Unbind use cases before rebinding
@@ -263,6 +393,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         closeUDPSocket()
+        closeTCPSocket()
         cameraExecutor.shutdown()
     }
 
@@ -281,6 +412,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }.toTypedArray()
         private const val UDP_PORT = 20001
+        private const val TCP_PORT = 20002
     }
 }
 
