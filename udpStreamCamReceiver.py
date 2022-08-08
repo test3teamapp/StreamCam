@@ -57,7 +57,7 @@ def recvSome(sock, count):
     buf = b''
     while count:
         newbuf = sock.recv(count)
-        if not newbuf: return None
+        if not newbuf: return b'\x00'
         buf += newbuf
         count -= len(newbuf)
     return buf
@@ -96,20 +96,24 @@ def thread_TCPServer(ipaddr, port):
     print(f"TCP server accepted connection from {addr}")
 
     while(True):
-        lengthAsBytes = recvSome(TCPconnection,4)
-        intLength = int.from_bytes(lengthAsBytes, "little")
-        print(f"image size in bytes: {intLength}")
-        imageData = recvSome(TCPconnection,intLength)
-
-
-        #display image
-        #buffer = io.BytesIO(message)
-        #buffer.seek(0)
-        #inp = np.asarray(bytearray(message), dtype=np.uint8)
-        i = cv2.imdecode(np.frombuffer(imageData, dtype=np.uint8), cv2.IMREAD_COLOR)
-        #i = jpeg.decode(message)
-        cv2.imshow("preview", i)
-        #cv2.waitKey(0)
+        try:
+            lengthAsBytes = recvSome(TCPconnection,4)
+            intLength = int.from_bytes(lengthAsBytes, "little")
+            print(f"image size in bytes: {intLength}")
+            if (intLength > 0):
+                imageData = recvSome(TCPconnection,intLength)
+                
+                if (len(imageData) > 1000): # arbitrary logical number for a jpg image of resonalble size
+                    #display image
+                    #buffer = io.BytesIO(message)
+                    #buffer.seek(0)
+                    #inp = np.asarray(bytearray(message), dtype=np.uint8)
+                    i = cv2.imdecode(np.frombuffer(imageData, dtype=np.uint8), cv2.IMREAD_COLOR)
+                    #i = jpeg.decode(message)
+                    cv2.imshow("preview", i)
+                    #cv2.waitKey(0)
+        except BaseException as err:
+            print(f"Unexpected {err}, {type(err)}")
 
     TCPServerSocket.close()
     logging.info("TCP Thread : finishing")
