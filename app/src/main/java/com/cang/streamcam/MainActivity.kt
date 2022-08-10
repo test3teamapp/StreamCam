@@ -352,7 +352,7 @@ class MainActivity : AppCompatActivity() {
 
                 // try sending
                 if (success) {
-                    sendUDP("size:${jpgbytes.size}")
+                    //sendUDP("size:${jpgbytes.size}")
                     //sendUDP(jpgbytes)
                     if (tcpSocket.isConnected && (!tcpSocket.isClosed)) {
                         sendTCP(jpgbytes)
