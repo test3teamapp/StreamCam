@@ -33,10 +33,7 @@ import com.cang.streamcam.Utils.NetUtils
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.io.IOException
-import java.net.DatagramPacket
-import java.net.DatagramSocket
-import java.net.InetAddress
-import java.net.Socket
+import java.net.*
 import java.nio.ByteBuffer
 
 //typealias LumaListener = (luma: Double) -> Unit
@@ -97,10 +94,11 @@ class MainActivity : AppCompatActivity() {
         Log.d(TAG, "Connected ips : $connectedIpArray")
         // open udp socket
         openUDPSocket(broadcastIP)
+        /*
         if (isImageClientIPIdentified) {
             openTCPSocket(imageClientIP)
         }
-
+        */
         // Request camera permissions
         if (allPermissionsGranted()) {
             startCamera()
@@ -137,7 +135,7 @@ class MainActivity : AppCompatActivity() {
                     udpSocket.broadcast = true
                 }
                 // get remote addresses of image clients
-                sendUDP("tcp")
+                //sendUDP("tcp")
             }
         } catch (e: Exception) {
             Log.e(TAG, "openUDPSocket: Exception: " + e.message)
@@ -157,23 +155,48 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openTCPSocket(inetAddress: InetAddress) {
+        var retries = 0
+        val maxRetries = 1
         try {
             //Open a port to send the package
             if (tcpSocket == null){
-                Socket(inetAddress.hostAddress, TCP_PORT)
+                println("tcpSocket was null.")
+                println("Opening tcp connection @ = $inetAddress")
+                tcpSocket = Socket(inetAddress.hostAddress, TCP_PORT)
+                tcpSocket.connect(InetSocketAddress(imageClientIP, TCP_PORT))
+
             }
             if (tcpSocket != null) {
                 if (tcpSocket.isClosed) {
+                    println("tcpSocket was closed.")
+                    println("Opening tcp connection @ = $inetAddress")
                     tcpSocket = Socket(inetAddress.hostAddress, TCP_PORT)
+                    tcpSocket.connect(InetSocketAddress(imageClientIP, TCP_PORT))
 
                 } else if (!tcpSocket.isConnected) {
+                    println("tcpSocket was open but not connected.")
+                    tcpSocket.connect(InetSocketAddress(imageClientIP, TCP_PORT))
+
+                } else if (tcpSocket.isInputShutdown || tcpSocket.isOutputShutdown){
+                    println("tcpSocket had input/output shutdown.")
+                    println("Closing and opening again tcp connection @ = $inetAddress")
                     tcpSocket.close()
                     tcpSocket = Socket(inetAddress.hostAddress, TCP_PORT)
-
+                    tcpSocket.connect(InetSocketAddress(imageClientIP, TCP_PORT))
                 }
             }
         } catch (e: Exception) {
             Log.e(TAG, "openTCPSocket: Exception: " + e.message)
+            // try once more
+            if (retries < maxRetries) {
+                retries++
+                if (e.message.toString().compareTo("Socket closed") == 0) {
+                    println("tcpSocket was -- actually -- closed.")
+                    println("Opening tcp connection @ = $inetAddress")
+                    tcpSocket = Socket(inetAddress.hostAddress, TCP_PORT)
+                    tcpSocket.connect(InetSocketAddress(imageClientIP, TCP_PORT))
+                }
+            }
         }
     }
 
@@ -238,19 +261,19 @@ class MainActivity : AppCompatActivity() {
                 // wait for responces
                 val buffer = ByteArray(1024)
                 val packet = DatagramPacket(buffer, buffer.size)
-                udpSocket.soTimeout = 10000 // set timeout
+                udpSocket.soTimeout = 2000 // set timeout 2 secs
                 try {
                     udpSocket.receive(packet)
                     val stringData = String(packet.data, packet.offset, packet.length)
-                    println("UDP packet received = " + stringData)
-                    // get remote tcp address and port
-                    imageClientIP = InetAddress.getByName(stringData.split(":")[0])
-                    isImageClientIPIdentified = true
-                    // try to open tcp
-                    if (tcpSocket.isClosed) {
-                        openTCPSocket(imageClientIP)
-                    } else {
-                        closeTCPSocket()
+                    println("UDP packet received = $stringData")
+                    // check if the udp we received is about the tcp connection request
+                    // first part of return string should be "tcp" (the request)
+                    if (stringData.split(":")[0].compareTo("tcp") == 0) {
+                        println("TCP details received")
+                        // get remote tcp address (and port, but for now port is static/just for one client)
+                        imageClientIP = InetAddress.getByName(stringData.split(":")[1])
+                        isImageClientIPIdentified = true
+                        // try to open tcp
                         openTCPSocket(imageClientIP)
                     }
                 }catch (e: Exception) {
@@ -358,6 +381,8 @@ class MainActivity : AppCompatActivity() {
                         sendTCP(jpgbytes)
                     }else {
                         sendUDP("tcp")
+                        // and wait ... for connection to be established
+                        Thread.sleep(2000)  // wait for 2 second
                     }
                 }
 

@@ -8,6 +8,7 @@ import threading
 import logging
 #from turbojpeg import TurboJPEG, TJPF_GRAY, TJSAMP_GRAY
 from multiprocessing import Process
+from multiprocessing import Queue
 #import time
 from enum import Enum
 
@@ -25,7 +26,7 @@ class TCPConnectionHandler:
     """Class for spawning , controlling a process for openning a TCP connection for receiving images """
 
     # variables here are common to all instances of the class #
-            
+
 
     def __init__(self, localIP, tcpPort):
         self.localIP = localIP
@@ -33,7 +34,10 @@ class TCPConnectionHandler:
         self.startTCP = False
         self.tcpState = TCP_STATE.DOWN
         self.tcpProcess = Process()
-   
+        # created an unbounded queue for accessing the state variable from the new process
+        self.queue = Queue()
+        self.queue.put(self.tcpState)
+
     def setIPandPort(self,localIP, tcpPort):
         self.localIP = localIP
         self.tcpPort = tcpPort
@@ -65,7 +69,7 @@ class TCPConnectionHandler:
             count -= len(newbuf)
         return buf
 
-    def process_TCPServer(self, ipaddr, port):
+    def process_TCPServer(self, ipaddr, port, stateQueue):
 
         logging.info("TCP process @ %s:%s starting", ipaddr, port)
 
@@ -81,15 +85,23 @@ class TCPConnectionHandler:
         # TCP socket
         TCPServerSocket = socket.socket(
             family=socket.AF_INET, type=socket.SOCK_STREAM)
-        TCPServerSocket.bind((self.localIP, self.tcpPort))
+        try:
+            TCPServerSocket.bind((self.localIP, self.tcpPort))
+        except BaseException as err:
+            print("TCP port binding failed")
+            print(f"Error: {err}, {type(err)}")
+            return
         # wait
         print("TCP server up and listening")
         self.tcpState = TCP_STATE.LISTENING
+        # add an item to the queue
+        stateQueue.put(self.tcpState)
         TCPServerSocket.listen()
-        # accepts TCP connection        
+        # accepts TCP connection
         TCPconnection, addr = TCPServerSocket.accept()
         print(f"TCP server accepted connection from {addr}")
         self.tcpState = TCP_STATE.CONNECTED
+        stateQueue.put(self.tcpState)
         while(self.startTCP):
             try:
                 lengthAsBytes = self.recvSome(TCPconnection, 4)
@@ -114,27 +126,37 @@ class TCPConnectionHandler:
                     if (self.is_socket_closed(TCPconnection)):
                         self.startTCP = False
                         self.tcpState = TCP_STATE.CLOSED
+                        stateQueue.put(self.tcpState)
                         break
 
             except BaseException as err:
                 print(f"Unexpected {err}, {type(err)}")
 
-        TCPconnection.close()       
+        TCPconnection.close()
         TCPServerSocket.close()
         self.startTCP = False
         self.tcpState = TCP_STATE.DOWN
+        stateQueue.put(self.tcpState)
         logging.info("TCP process : finishing")
         print("TCP process : finishing")
 
     def create_TCPProcess(self):
-        self.startTCP = True
-        self.tcpProcess = Process(
-            target=self.process_TCPServer, args=(self.localIP, self.tcpPort,))
-        self.tcpProcess.start()
+        # check if TCP Process is running
+
+        # get the last item from the queue. the latest self.tcpState value
+        state = TCP_STATE.DOWN
+        while (not self.queue.empty()):
+            state = self.queue.get()
+        print(f"create_TCPProcess : latest tcp state from queue : {state}")
+        if (state == TCP_STATE.DOWN or state == TCP_STATE.CLOSED):
+            self.startTCP = True
+            self.tcpProcess = Process(
+                target=self.process_TCPServer, args=(self.localIP, self.tcpPort,self.queue))
+            self.tcpProcess.start()
 
     def terminate_TCPProcess(self):
         self.startTCP = False
         self.tcpProcess.terminate()
         self.tcpProcess.kill()
-    
-        
+
+

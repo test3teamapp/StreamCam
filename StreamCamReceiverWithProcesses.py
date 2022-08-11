@@ -51,27 +51,28 @@ def thread_UDPServer(ipaddr, port):
         if (messageStr == "tcp"):
             my_print(f"User requested TCP details for connection")
             _localIP = extract_ip()
+            print(f"myTCPConnectionHandler.tcpState = {myTCPConnectionHandler.tcpState}")
             # the app wants to connect. Make sure there is no TCP process running and blocking the port
-            if (myTCPConnectionHandler.tcpState == TCP_STATE.CONNECTED):
-                my_print(
-                    f"TCP server was running. Shutting it down... {myTCPConnectionHandler.startTCP}")
-                myTCPConnectionHandler.terminate_TCPProcess()
+            #if (myTCPConnectionHandler.tcpState == TCP_STATE.CONNECTED):
+            #    my_print(
+            #        f"TCP server was running. Shutting it down... {myTCPConnectionHandler.startTCP}")
+            #    myTCPConnectionHandler.terminate_TCPProcess()
                 # setting startTCP to False should exit the while loop of TCP server
                 # The process should then join and end
                 # wait for a second untill all this is done
                 # time.sleep(1) # Sleep for 1 second
-                my_print(
-                    f"Is TCP server running : {myTCPConnectionHandler.startTCP}")
+            #    my_print(
+            #        f"Is TCP server running : {myTCPConnectionHandler.startTCP}")
                 # start a new TCP process
-                my_print(f"Starting a new TCP server process")
-                myTCPConnectionHandler.create_TCPProcess()
-            elif (myTCPConnectionHandler.tcpState == TCP_STATE.DOWN or myTCPConnectionHandler.tcpState == TCP_STATE.CLOSED):
+            #    my_print(f"Starting a new TCP server process")
+            #    myTCPConnectionHandler.create_TCPProcess()
+            if (myTCPConnectionHandler.tcpState == TCP_STATE.DOWN or myTCPConnectionHandler.tcpState == TCP_STATE.CLOSED):
                 my_print(f"No TCP server was running. Starting a new process")
                 myTCPConnectionHandler.create_TCPProcess()
             else:
                 my_print(f"TCP server is already listenning for connection")
             # Sending a reply to client
-            responceMsg = f"{_localIP}:{_localTCPPort}"
+            responceMsg = f"tcp:{_localIP}:{_localTCPPort}"
             UDPServerSocket.sendto(str.encode(responceMsg), address)
         if (messageStr.startswith('size:')):
             parts = messageStr.split(":")
