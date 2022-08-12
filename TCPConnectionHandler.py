@@ -14,6 +14,10 @@ from enum import Enum
 
 #import signal
 #import os
+# for converting cv2 image to PIL Image, to feed the detector
+from PIL import Image
+
+from CoralDetector import CoralDetector
 
 
 class TCP_STATE(Enum):
@@ -23,7 +27,7 @@ class TCP_STATE(Enum):
     CLOSED = 4
 
 class TCPConnectionHandler:
-    """Class for spawning , controlling a process for openning a TCP connection for receiving images """
+    """Class for spawning and controlling a process for openning a TCP connection for receiving images """
 
     # variables here are common to all instances of the class #
 
@@ -75,9 +79,9 @@ class TCPConnectionHandler:
 
         # If you run an interactive ipython session, and want to use highgui windows, do cv2.startWindowThread() first.
         # In detail: HighGUI is a simplified interface to display images and video from OpenCV code.
-        cv2.startWindowThread()
-        cv2.namedWindow("preview")
-        cv2.moveWindow("preview", 20, 20)
+        #cv2.startWindowThread()
+        #cv2.namedWindow("preview")
+        #cv2.moveWindow("preview", 20, 20)
 
         # Use default library installation
         #jpeg = TurboJPEG()
@@ -102,11 +106,17 @@ class TCPConnectionHandler:
         print(f"TCP server accepted connection from {addr}")
         self.tcpState = TCP_STATE.CONNECTED
         stateQueue.put(self.tcpState)
+
+        # create a detector
+        sharedImageQueue = Queue()
+        myCoralDetector = CoralDetector(sharedImageQueue)
+        myCoralDetector.create_DetectProcess()
+
         while(self.startTCP):
             try:
                 lengthAsBytes = self.recvSome(TCPconnection, 4)
                 intLength = int.from_bytes(lengthAsBytes, "little")
-                print(f"image size in bytes: {intLength}")
+                #print(f"image size in bytes: {intLength}")
                 if (intLength > 0):
                     imageData = self.recvSome(TCPconnection, intLength)
 
@@ -119,14 +129,29 @@ class TCPConnectionHandler:
                         i = cv2.imdecode(np.frombuffer(
                             imageData, dtype=np.uint8), cv2.IMREAD_COLOR)
                         #i = jpeg.decode(message)
-                        cv2.imshow("preview", i)
+                        #cv2.imshow("preview", i)
                         # cv2.waitKey(0)
+                         # WE NEED TO TRANSFORM THE CV2 image TO A PIL Image
+                        #img = cv2.cvtColor(i, cv2.COLOR_BGR2RGB)
+                        #im_pil = Image.fromarray(img)
+                        #myCoralDetector.detectInImageProcess(im_pil)
+                        ## put in image que for the detector process to get and process
+
+                        #### EDGE TPU might not be able to process all frames we sent
+                        #### queing them in a FIFO way is not usefull for our purpose
+                        #### WE NEED THE TPU TO PROCESS ALWAYS THE LATEST IMAGE (camera frame)
+                        #### so...
+                        if (sharedImageQueue.empty()):
+                            sharedImageQueue.put(i)
+                        ### else , skip this frame. the TPU has not processed the previous one
+
                 else:
                     # if length of image buffer is 0, check if connection is closed
                     if (self.is_socket_closed(TCPconnection)):
                         self.startTCP = False
                         self.tcpState = TCP_STATE.CLOSED
                         stateQueue.put(self.tcpState)
+                        myCoralDetector.terminate_DetectProcess()
                         break
 
             except BaseException as err:
@@ -137,6 +162,7 @@ class TCPConnectionHandler:
         self.startTCP = False
         self.tcpState = TCP_STATE.DOWN
         stateQueue.put(self.tcpState)
+        cv2.destroyAllWindows()
         logging.info("TCP process : finishing")
         print("TCP process : finishing")
 
