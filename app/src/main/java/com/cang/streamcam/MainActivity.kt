@@ -4,12 +4,13 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraMetadata
 import android.hardware.camera2.CaptureRequest
 import android.os.Build
 import android.os.Bundle
 import android.os.StrictMode
 import androidx.appcompat.app.AppCompatActivity
-import androidx.camera.core.ImageCapture
 import androidx.camera.video.Recorder
 import androidx.camera.video.Recording
 import androidx.camera.video.VideoCapture
@@ -20,14 +21,13 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import android.widget.Toast
 import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.core.Preview
-import androidx.camera.core.CameraSelector
 import android.util.Log
 import android.util.Range
 import android.util.Size
+import android.view.Surface
+import androidx.camera.camera2.interop.Camera2CameraInfo
 import androidx.camera.camera2.interop.Camera2Interop
-import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.ImageProxy
+import androidx.camera.core.*
 import com.cang.streamcam.Utils.BitmapUtils
 import com.cang.streamcam.Utils.NetUtils
 import java.io.ByteArrayOutputStream
@@ -47,8 +47,14 @@ class MainActivity : AppCompatActivity() {
 
     private var videoCapture: VideoCapture<Recorder>? = null
     private var recording: Recording? = null
+    private var isShowingPreview = false
 
     private lateinit var cameraExecutor: ExecutorService
+    // Used to bind the lifecycle of cameras to the lifecycle owner
+    private lateinit var cameraProvider: ProcessCameraProvider
+    private lateinit var cameraSelector: CameraSelector
+    private  lateinit var imagePreview: Preview
+    private  lateinit var imageAnalyzer: ImageAnalysis
 
     private var startCountFrameMillSecs = System.currentTimeMillis()
     private var numOfFrames = 0
@@ -58,6 +64,7 @@ class MainActivity : AppCompatActivity() {
     private var isImageClientIPIdentified = false
     private var udpSocket = DatagramSocket()
     private var tcpSocket = Socket()
+
 
     @SuppressLint("MissingSuperCall")
     override fun onRequestPermissionsResult(
@@ -111,6 +118,7 @@ class MainActivity : AppCompatActivity() {
         // Set up the listeners for take photo and video capture buttons
         viewBinding.imageCaptureButton.setOnClickListener { takePhoto() }
         viewBinding.videoCaptureButton.setOnClickListener { captureVideo() }
+        viewBinding.showPreviewButton.setOnClickListener { showPreview() }
         viewBinding.fpsTextview.setText("fps");
 
         cameraExecutor = Executors.newSingleThreadExecutor()
@@ -304,22 +312,81 @@ class MainActivity : AppCompatActivity() {
 
     private fun captureVideo() {}
 
+    private fun showPreview() {
+        if (isShowingPreview) {
+            try {
+                // Unbind use cases before rebinding
+                cameraProvider.unbindAll()
+
+                // Bind use cases to camera
+                if (cameraSelector != null) {
+                    cameraProvider.bindToLifecycle(
+                        this, cameraSelector, imageAnalyzer
+                    )
+                }
+                isShowingPreview = false
+                viewBinding.showPreviewButton.setText(getString(R.string.show_preview))
+
+
+            } catch (exc: Exception) {
+                Log.e(TAG, "Use case binding failed when removing preview", exc)
+            }
+        } else {
+
+            try {
+                // Unbind use cases before rebinding
+                cameraProvider.unbindAll()
+
+                // Bind use cases to camera
+                if (cameraSelector != null) {
+                    cameraProvider.bindToLifecycle(
+                        this, cameraSelector, imagePreview, imageAnalyzer
+                    )
+                }
+                isShowingPreview = true
+                viewBinding.showPreviewButton.setText(getString(R.string.stop_preview))
+            } catch (exc: Exception) {
+                Log.e(TAG, "Use case binding failed when adding preview", exc)
+            }
+        }
+    }
+
+    @SuppressLint("UnsafeOptInUsageError")
+    private fun selectExternalOrBestCamera(provider: ProcessCameraProvider): CameraSelector {
+        val cam2Infos = provider.availableCameraInfos.map {
+            Camera2CameraInfo.from(it)
+        }.sortedByDescending {
+            // HARDWARE_LEVEL is Int type, with the order of:
+            // LEGACY < LIMITED < FULL < LEVEL_3 < EXTERNAL
+            it.getCameraCharacteristic(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL)
+        }
+
+        return when {
+            cam2Infos.isNotEmpty() -> {
+                CameraSelector.Builder()
+                    .addCameraFilter {
+                        it.filter { camInfo ->
+                            // cam2Infos[0] is either EXTERNAL or best built-in camera
+                            val thisCamId = Camera2CameraInfo.from(camInfo).cameraId
+                            thisCamId == cam2Infos[0].cameraId
+                        }
+                    }.build()
+            }
+            else -> CameraSelector.DEFAULT_BACK_CAMERA
+        }
+    }
+
+
     @SuppressLint("UnsafeOptInUsageError")
     private fun startCamera() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
 
         cameraProviderFuture.addListener({
             // Used to bind the lifecycle of cameras to the lifecycle owner
-            val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
-
-            // make sure udp socket is ready
-            //openUDPSocket(broadcastIP)
-            //if (isImageClientIPIdentified) {
-             //   openTCPSocket(imageClientIP)
-            //}
+            cameraProvider= cameraProviderFuture.get()
 
             // Preview --not necessarry to be used
-            val preview = Preview.Builder()
+            imagePreview = Preview.Builder()
                 .build()
                 .also {
                     it.setSurfaceProvider(viewBinding.viewFinder.surfaceProvider)
@@ -328,31 +395,26 @@ class MainActivity : AppCompatActivity() {
             val analysisBuilder = ImageAnalysis.Builder()
             val ext: Camera2Interop.Extender<*> = Camera2Interop.Extender(analysisBuilder)
 
-            ext.setCaptureRequestOption(
-                CaptureRequest.CONTROL_AE_MODE,
-                CaptureRequest.CONTROL_AE_STATE_LOCKED
-            )
-            ext.setCaptureRequestOption(
-                CaptureRequest.CONTROL_AF_MODE,
-                CaptureRequest.CONTROL_AF_MODE_OFF
-            )
-
-            ext.setCaptureRequestOption(
-                CaptureRequest.JPEG_QUALITY, 80
-            )
-
-
-            ext.setCaptureRequestOption(
-                CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
-                Range<Int>(30, 60)
-            )
-
+            ext.setCaptureRequestOption(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_STATE_LOCKED)
+            ext.setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
+            ext.setCaptureRequestOption(CaptureRequest.JPEG_QUALITY, 80)
+            ext.setCaptureRequestOption(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range<Int>(30, 60))
+            ext.setCaptureRequestOption(CaptureRequest.EDGE_MODE, CameraMetadata.EDGE_MODE_HIGH_QUALITY);
+            ext.setCaptureRequestOption(CaptureRequest.SHADING_MODE, CameraMetadata.SHADING_MODE_HIGH_QUALITY);
+            ext.setCaptureRequestOption(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_HIGH_QUALITY);
+            ext.setCaptureRequestOption(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CameraMetadata.COLOR_CORRECTION_ABERRATION_MODE_HIGH_QUALITY);
+            ext.setCaptureRequestOption(CaptureRequest.COLOR_CORRECTION_MODE, CameraMetadata.COLOR_CORRECTION_ABERRATION_MODE_HIGH_QUALITY);
+            ext.setCaptureRequestOption(CaptureRequest.HOT_PIXEL_MODE, CameraMetadata.HOT_PIXEL_MODE_HIGH_QUALITY);
+            ext.setCaptureRequestOption(CaptureRequest.NOISE_REDUCTION_MODE, CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY);
+            ext.setCaptureRequestOption(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_ON);
 
             //analysisBuilder.setTargetResolution(Size(1280, 720))
             //analysisBuilder.setTargetResolution(Size(1920, 1080))
+            analysisBuilder.setTargetRotation(Surface.ROTATION_90)
+            analysisBuilder.setTargetAspectRatio(AspectRatio.RATIO_16_9)
 
 
-            val imageAnalyzer = analysisBuilder.build();
+            imageAnalyzer = analysisBuilder.build();
 
             imageAnalyzer.setAnalyzer(cameraExecutor, FrameStreamer { success, jpgbytes ->
                 //Log.d(TAG, "Total frames analysed : $numOfFrames")
@@ -389,17 +451,22 @@ class MainActivity : AppCompatActivity() {
             })
 
             // Select back camera as a default
-            val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+            //val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
             //val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
+            // create a CameraSelector for the USB camera (or highest level internal camera)
+            cameraSelector = selectExternalOrBestCamera(cameraProvider)
+
 
             try {
                 // Unbind use cases before rebinding
                 cameraProvider.unbindAll()
 
                 // Bind use cases to camera
-                cameraProvider.bindToLifecycle(
-                    this, cameraSelector, imageAnalyzer
-                )
+                if (cameraSelector != null) {
+                    cameraProvider.bindToLifecycle(
+                        this, cameraSelector, imageAnalyzer
+                    )
+                }
 
             } catch (exc: Exception) {
                 Log.e(TAG, "Use case binding failed", exc)

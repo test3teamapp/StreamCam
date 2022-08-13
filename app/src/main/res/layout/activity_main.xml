@@ -14,40 +14,55 @@
 
     <Button
         android:id="@+id/image_capture_button"
-        android:layout_width="110dp"
-        android:layout_height="110dp"
+        android:layout_width="50dp"
+        android:layout_height="50dp"
         android:layout_marginBottom="50dp"
-        android:layout_marginEnd="50dp"
         android:elevation="2dp"
         android:text="@string/take_photo"
+        android:textSize="10dp"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintLeft_toLeftOf="parent"/>
+        app:layout_constraintLeft_toLeftOf="parent" />
         //app:layout_constraintEnd_toStartOf="@id/vertical_centerline" />
 
     <TextView
         android:id="@+id/fps_textview"
-        android:layout_width="110dp"
-        android:layout_height="110dp"
+        android:layout_width="50dp"
+        android:layout_height="50dp"
+        android:layout_marginLeft="50dp"
         android:layout_marginBottom="50dp"
-        android:layout_marginStart="50dp"
+        android:background="#000000"
         android:elevation="2dp"
         android:text=""
+        android:textColor="@color/white"
         android:textSize="20dp"
-        android:textColor="@color/cardview_dark_background"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintLeft_toRightOf="@id/image_capture_button" />
         //app:layout_constraintEnd_toStartOf="@id/vertical_centerline" />
 
     <Button
-        android:id="@+id/video_capture_button"
-        android:layout_width="110dp"
-        android:layout_height="110dp"
+        android:id="@+id/show_preview_button"
+        android:layout_width="50dp"
+        android:layout_height="50dp"
+        android:layout_marginLeft="50dp"
         android:layout_marginBottom="50dp"
-        android:layout_marginStart="50dp"
+        android:elevation="2dp"
+        android:text="@string/show_preview"
+        android:textSize="10dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintLeft_toRightOf="@id/fps_textview" />
+    <Button
+        android:id="@+id/video_capture_button"
+        android:layout_width="50dp"
+        android:layout_height="50dp"
+        android:layout_marginBottom="50dp"
         android:elevation="2dp"
         android:text="@string/start_capture"
+        android:textSize="10dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintRight_toRightOf="parent" />
+
+
+
 
     <androidx.constraintlayout.widget.Guideline
         android:id="@+id/vertical_centerline"
