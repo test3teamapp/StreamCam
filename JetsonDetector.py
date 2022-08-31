@@ -5,7 +5,7 @@ import cv2
 import os
 import logging
 
-from multiprocessing import Process
+from multiprocessing import Process, Value, Array
 from multiprocessing import Queue
 from enum import Enum
 
@@ -30,11 +30,17 @@ class JetsonDetector:
 
     # variables here are common to all instances of the class #
 
-    def __init__(self, sharedImageQueue: Queue):
+    def __init__(self, sharedImageQueue: Queue, sharedDataArray: Array): 
         self.detectProcess = Process()
         # create queues for accessing the state variable from the new process
         # and send the images received by the TCP process for processing
         self.imageQueue = sharedImageQueue
+        
+        #the data array should contain values for [0]speed,[1]y-axis accelaration 
+        #that have been received by the UDP server (main process that has spawned the rest)
+        #and are used here to be combined with the detections for defining possible collisions
+        self.sharedDataArray = sharedDataArray
+        
         self.stateQueue = Queue()
         self.startDetectProcess = False
         self.detectProcessState = DETECT_PROCESS_STATE.STOPPED

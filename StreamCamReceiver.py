@@ -7,7 +7,7 @@ import numpy as np
 import threading
 import logging
 #from turbojpeg import TurboJPEG, TJPF_GRAY, TJSAMP_GRAY
-from multiprocessing import Process
+from multiprocessing import Process, Value, Array
 import time
 from enum import Enum
 
@@ -26,7 +26,10 @@ _DEBUG = False
 
 def thread_UDPServer(ipaddr, port):
     _localIP = extract_ip()
-    myTCPConnectionHandler = TCPConnectionHandler(_localIP, _localTCPPort)
+    #create process-wide shared variables / vars in array
+    #the data array should contain values for [0]speed,[1]y-axis accelaration 
+    sharedDataArray = Array('d', range(10)) #contains double digit floats  
+    myTCPConnectionHandler = TCPConnectionHandler(_localIP, _localTCPPort, sharedDataArray)
     # Create a datagram socket (NOT GREAT FOR RECEIVING IMAGES)
     UDPServerSocket = socket.socket(
         family=socket.AF_INET, type=socket.SOCK_DGRAM)
@@ -83,6 +86,12 @@ def thread_UDPServer(ipaddr, port):
         if (messageStr.startswith('size:')):
             parts = messageStr.split(":")
             #latestReceivedSizeOfImage = int(parts[1])
+        if (messageStr.startswith('speed:')):
+            parts = messageStr.split(":")
+            sharedDataArray[0] = float(parts[1])
+        if (messageStr.startswith('turn')): # it could be both e.g turnLeft:1.4 turnRight:-1.2
+            parts = messageStr.split(":")
+            sharedDataArray[1] = int(parts[1])
 
     UDPServerSocket.close()
     logging.info("UDP Thread : finishing")

@@ -7,7 +7,7 @@ import numpy as np
 import threading
 import logging
 #from turbojpeg import TurboJPEG, TJPF_GRAY, TJSAMP_GRAY
-from multiprocessing import Process
+from multiprocessing import Process, Value, Array
 from multiprocessing import Queue
 #import time
 from enum import Enum
@@ -33,9 +33,12 @@ class TCPConnectionHandler:
     # variables here are common to all instances of the class #
 
 
-    def __init__(self, localIP, tcpPort):
+    def __init__(self, localIP, tcpPort, sharedDataArray: Array): 
         self.localIP = localIP
         self.tcpPort = tcpPort
+        #the data array should contain values for [0]speed,[1]y-axis accelaration 
+        # pass it on to the Detection process where is mainly needed
+        self.sharedDataArray = sharedDataArray
         self.startTCP = False
         self.tcpState = TCP_STATE.DOWN
         self.tcpProcess = Process()
@@ -107,11 +110,11 @@ class TCPConnectionHandler:
         print(f"TCP server accepted connection from {addr}")
         self.tcpState = TCP_STATE.CONNECTED
         stateQueue.put(self.tcpState)
-
-        # create a detector
+        
         sharedImageQueue = Queue()
+        # create a detector
         #myDetector = CoralDetector(sharedImageQueue)
-        myDetector = JetsonDetector(sharedImageQueue)
+        myDetector = JetsonDetector(sharedImageQueue, self.sharedDataArray)
         myDetector.create_DetectProcess()
 
         while(self.startTCP):
