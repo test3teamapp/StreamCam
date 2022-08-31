@@ -68,7 +68,13 @@ def thread_UDPServer(ipaddr, port):
             #    myTCPConnectionHandler.create_TCPProcess()
             if (myTCPConnectionHandler.tcpState == TCP_STATE.DOWN or myTCPConnectionHandler.tcpState == TCP_STATE.CLOSED):
                 my_print(f"No TCP server was running. Starting a new process")
-                myTCPConnectionHandler.create_TCPProcess()
+                try:
+                    myTCPConnectionHandler.create_TCPProcess()
+                except BaseException as err:
+                    print("create_TCPProcess() failed")
+                    print(f"Error: {err}, {type(err)}")
+                    my_print(f"KILL TCP server peocess.")
+                    myTCPConnectionHandler.terminate_TCPProcess()
             else:
                 my_print(f"TCP server is already listenning for connection")
             # Sending a reply to client
@@ -94,7 +100,7 @@ def extract_ip():
         st.connect(('10.255.255.255', 1))
         IP = st.getsockname()[0]
     except Exception:
-        my_print("extract_ip : Exception :", Exception)
+        my_print(f"extract_ip : Exception : {Exception}")
         IP = socket.gethostbyname(socket.gethostname())
     finally:
         st.close()

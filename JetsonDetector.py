@@ -1,7 +1,9 @@
+from pickle import FALSE
 import time
 
 import cv2
 import os
+import logging
 
 from multiprocessing import Process
 from multiprocessing import Queue
@@ -13,7 +15,9 @@ import jetson.utils
 import sys
 import cv2
 
-_DEBUG = True
+_DEBUG = False
+_OUTPUT = False
+_FPSINFO = True
 
 
 class DETECT_PROCESS_STATE(Enum):
@@ -22,7 +26,7 @@ class DETECT_PROCESS_STATE(Enum):
 
 
 class JetsonDetector:
-    """Class for proccessing images on coral TPU """
+    """Class for proccessing images on Jetson GPU"""
 
     # variables here are common to all instances of the class #
 
@@ -83,9 +87,10 @@ class JetsonDetector:
         threshold = 0.4
         networkName = "ssd-mobilenet-v2"
 
-        # create video output object
-        output = jetson.utils.videoOutput(
-            "display://0")  # 'my_video.mp4' for file
+        if (_OUTPUT):
+            # create video output object
+            output = jetson.utils.videoOutput(
+                "display://0")  # 'my_video.mp4' for file
         # load the object detection network
         net = jetson.inference.detectNet(
             networkName, sys.argv, threshold=0.5)
@@ -105,22 +110,29 @@ class JetsonDetector:
                 # detect objects in the image (with overlay)
                 detections = net.Detect(cudaImage, overlay=overlayConfig)
 
-                # print the detections
-                print("detected {:d} objects in image".format(
-                    len(detections)))
+                if (_DEBUG):
+                    # print the detections
+                    print("detected {:d} objects in image".format(
+                        len(detections)))
 
-                for detection in detections:
-                    print(detection)
+                    for detection in detections:
+                        print(detection)
 
-                # render the image
-                output.Render(cudaImage)
+                if (_OUTPUT):
+                    # render the image
+                    output.Render(cudaImage)
 
-                # update the title bar
-                output.SetStatus("{:s} | Network {:.0f} FPS".format(
-                    networkName, net.GetNetworkFPS()))
+                    # update the title bar
+                    output.SetStatus("{:s} | Network {:.0f} FPS".format(
+                        networkName, net.GetNetworkFPS()))
 
-                # print out performance info
-                net.PrintProfilerTimes()
+                if (_DEBUG):
+                    # print out performance info
+                    net.PrintProfilerTimes()
+
+                if (_FPSINFO):
+                    print("fps : {:.0f}".format(net.GetNetworkFPS()))
+
 
         self.detectProcessState = DETECT_PROCESS_STATE.STOPPED
         stateQ.put(self.detectProcessState)
@@ -128,9 +140,9 @@ class JetsonDetector:
         print("Detect process : finishing")
 
     def create_DetectProcess(self):
-        # check if TCP Process is running
+        # check if Detect Process is running
 
-        # get the last item from the queue. the latest self.tcpState value
+        # get the last item from the queue. the latest self.detectProcessState value
         state = DETECT_PROCESS_STATE.STOPPED
         while (not self.stateQueue.empty()):
             state = self.stateQueue.get()

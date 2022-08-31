@@ -17,7 +17,8 @@ from enum import Enum
 # for converting cv2 image to PIL Image, to feed the detector
 from PIL import Image
 
-from CoralDetector import CoralDetector
+#from CoralDetector import CoralDetector
+from JetsonDetector import JetsonDetector
 
 
 class TCP_STATE(Enum):
@@ -109,8 +110,9 @@ class TCPConnectionHandler:
 
         # create a detector
         sharedImageQueue = Queue()
-        myCoralDetector = CoralDetector(sharedImageQueue)
-        myCoralDetector.create_DetectProcess()
+        #myDetector = CoralDetector(sharedImageQueue)
+        myDetector = JetsonDetector(sharedImageQueue)
+        myDetector.create_DetectProcess()
 
         while(self.startTCP):
             try:
@@ -148,14 +150,15 @@ class TCPConnectionHandler:
                 else:
                     # if length of image buffer is 0, check if connection is closed
                     if (self.is_socket_closed(TCPconnection)):
+                        print(f"process_TCPServer: Socket closed. Terminating Detection Process")
                         self.startTCP = False
                         self.tcpState = TCP_STATE.CLOSED
                         stateQueue.put(self.tcpState)
-                        myCoralDetector.terminate_DetectProcess()
+                        myDetector.terminate_DetectProcess()
                         break
 
             except BaseException as err:
-                print(f"Unexpected {err}, {type(err)}")
+                print(f"process_TCPServer: Unexpected {err}, {type(err)}")
 
         TCPconnection.close()
         TCPServerSocket.close()

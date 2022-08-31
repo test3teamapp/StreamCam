@@ -4,37 +4,41 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.ImageFormat
+import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraMetadata
 import android.hardware.camera2.CaptureRequest
+import android.hardware.camera2.params.RecommendedStreamConfigurationMap
+import android.hardware.camera2.params.StreamConfigurationMap
 import android.os.Build
 import android.os.Bundle
 import android.os.StrictMode
+import android.util.Log
+import android.util.Range
+import android.view.Surface
+import android.view.WindowManager
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.camera.camera2.interop.Camera2CameraInfo
+import androidx.camera.camera2.interop.Camera2Interop
+import androidx.camera.core.*
+import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.Recorder
 import androidx.camera.video.Recording
 import androidx.camera.video.VideoCapture
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.cang.streamcam.databinding.ActivityMainBinding
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
-import android.widget.Toast
-import androidx.camera.lifecycle.ProcessCameraProvider
-import android.util.Log
-import android.util.Range
-import android.util.Size
-import android.view.Surface
-import androidx.camera.camera2.interop.Camera2CameraInfo
-import androidx.camera.camera2.interop.Camera2Interop
-import androidx.camera.core.*
 import com.cang.streamcam.Utils.BitmapUtils
 import com.cang.streamcam.Utils.NetUtils
+import com.cang.streamcam.databinding.ActivityMainBinding
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.io.IOException
 import java.net.*
 import java.nio.ByteBuffer
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 //typealias LumaListener = (luma: Double) -> Unit
 typealias StreamListener = (success: Boolean, jpgbytes: ByteArray) -> Unit
@@ -91,6 +95,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         viewBinding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(viewBinding.root)
+        // keep screen always on
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         // get addresses of connected devices
         connectedIpArray = NetUtils.getArpLiveIps(true)
@@ -353,6 +359,19 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("UnsafeOptInUsageError")
     private fun selectExternalOrBestCamera(provider: ProcessCameraProvider): CameraSelector {
+
+        val allCam2Infos = provider.availableCameraInfos
+        for(camInfo in allCam2Infos){
+            Log.d(TAG, "Hardware level of camera : " +
+                Camera2CameraInfo.from(camInfo).getCameraCharacteristic(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL)
+                    .toString()
+            )
+            val streamConfigurationMap = Camera2CameraInfo.from(camInfo).getCameraCharacteristic(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+            if (streamConfigurationMap != null) {
+                Log.d(TAG,"JPEG output sizes : " + streamConfigurationMap.getOutputSizes(ImageFormat.JPEG).contentToString())
+            }
+        }
+
         val cam2Infos = provider.availableCameraInfos.map {
             Camera2CameraInfo.from(it)
         }.sortedByDescending {
