@@ -5,4 +5,6 @@
     <string name="stop_capture">Stop Capture</string>
     <string name="show_preview">Show Preview</string>
     <string name="stop_preview">Stop Preview</string>
+    <string name="switch_camera">Switch Camera</string>
+    <string name="switch_zoom">Switch Zoom</string>
 </resources>

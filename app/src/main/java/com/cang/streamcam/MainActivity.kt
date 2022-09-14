@@ -2,15 +2,14 @@ package com.cang.streamcam
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.ImageFormat
-import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraMetadata
 import android.hardware.camera2.CaptureRequest
-import android.hardware.camera2.params.RecommendedStreamConfigurationMap
-import android.hardware.camera2.params.StreamConfigurationMap
+import android.hardware.display.DisplayManager
 import android.os.Build
 import android.os.Bundle
 import android.os.StrictMode
@@ -47,28 +46,31 @@ typealias StreamListener = (success: Boolean, jpgbytes: ByteArray) -> Unit
 class MainActivity : AppCompatActivity() {
     private lateinit var viewBinding: ActivityMainBinding
 
-    private var imageCapture: ImageCapture? = null
 
+    private var currentCamera: Camera? = null
+    private var currentLinearZoom: Float = 0f
+    private var imageCapture: ImageCapture? = null
     private var videoCapture: VideoCapture<Recorder>? = null
     private var recording: Recording? = null
     private var isShowingPreview = false
 
     private lateinit var cameraExecutor: ExecutorService
+
     // Used to bind the lifecycle of cameras to the lifecycle owner
     private lateinit var cameraProvider: ProcessCameraProvider
     private lateinit var cameraSelector: CameraSelector
-    private  lateinit var imagePreview: Preview
-    private  lateinit var imageAnalyzer: ImageAnalysis
+    private lateinit var imagePreview: Preview
+    private lateinit var imageAnalyzer: ImageAnalysis
 
     private var startCountFrameMillSecs = System.currentTimeMillis()
     private var numOfFrames = 0
-    private lateinit var connectedIpArray: ArrayList<String>
-    private lateinit var broadcastIP: InetAddress
-    private lateinit var imageClientIP: InetAddress
-    private var isImageClientIPIdentified = false
-    private var udpSocket = DatagramSocket()
-    private var tcpSocket = Socket()
 
+
+    private val displayManager by lazy {
+        this.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+    }
+
+    private lateinit var connectionHandler: ConnectionHandler
 
     @SuppressLint("MissingSuperCall")
     override fun onRequestPermissionsResult(
@@ -90,6 +92,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * We need a display listener for orientation changes that do not trigger a configuration
+     * change, for example if we choose to override config change in manifest or for 180-degree
+     * orientation changes.
+     */
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayid: Int) = Unit
+        override fun onDisplayRemoved(displayid: Int) = Unit
+        override fun onDisplayChanged(displayid: Int) = Unit
+    }
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -98,21 +111,36 @@ class MainActivity : AppCompatActivity() {
         // keep screen always on
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        // get addresses of connected devices
-        connectedIpArray = NetUtils.getArpLiveIps(true)
-        Log.d(TAG, "Connected ips : $connectedIpArray")
-        // get broadcast address net
-        broadcastIP =
-            NetUtils.getBroadcast(NetUtils.getIpAddress())//InetAddress.getByName("192.168.1.12")//NetUtils.getBroadcast(NetUtils.getIpAddress())
-        Log.d(TAG, "Connected ips : $connectedIpArray")
-        // open udp socket
-        openUDPSocket(broadcastIP)
-        /*
-        if (isImageClientIPIdentified) {
-            openTCPSocket(imageClientIP)
-        }
-        */
-        // Request camera permissions
+        // Every time the orientation of device changes, update rotation for use cases
+        displayManager.registerDisplayListener(displayListener, null)
+        connectionHandler = ConnectionHandler()
+        connectionHandler.createSockets()
+
+        restartCamera()
+
+        // Set up the listeners for take photo and video capture buttons
+        viewBinding.imageCaptureButton.setOnClickListener { takePhoto() }
+        viewBinding.videoCaptureButton.setOnClickListener { captureVideo() }
+        viewBinding.showPreviewButton.setOnClickListener { showPreview() }
+        viewBinding.fpsTextview.setText("fps");
+        viewBinding.switchCameraButton.setOnClickListener { switchCamera() }
+        viewBinding.switchZoomButton.setOnClickListener { switchZoom() }
+
+        //// --- PERFORMANCE WHEN CHANGING THIS ?????? ----- /////
+        cameraExecutor = Executors.newSingleThreadExecutor()
+    }
+
+    private fun switchZoom() {
+        if(currentLinearZoom == 0.0f){
+            currentLinearZoom = 0.5f
+        }else if (currentLinearZoom == 0.5f){
+            currentLinearZoom = 1.0f
+        }else currentLinearZoom= 0.0f
+
+        rebindCameraUseCases()
+    }
+
+    private fun restartCamera() {
         if (allPermissionsGranted()) {
             startCamera()
         } else {
@@ -120,255 +148,131 @@ class MainActivity : AppCompatActivity() {
                 this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS
             )
         }
-
-        // Set up the listeners for take photo and video capture buttons
-        viewBinding.imageCaptureButton.setOnClickListener { takePhoto() }
-        viewBinding.videoCaptureButton.setOnClickListener { captureVideo() }
-        viewBinding.showPreviewButton.setOnClickListener { showPreview() }
-        viewBinding.fpsTextview.setText("fps");
-
-        cameraExecutor = Executors.newSingleThreadExecutor()
-    }
-
-    private fun openUDPSocket(inetAddress: InetAddress) {
-        try {
-            //Open a port to send the package
-            if (udpSocket == null){
-                udpSocket = DatagramSocket()
-            }
-            if (udpSocket != null) {
-                Log.d(TAG, "openUDPSocket: socket not null")
-                if (udpSocket.isClosed) {
-                    Log.d(TAG, "openUDPSocket: socket was closed")
-                    udpSocket = DatagramSocket()
-                    udpSocket.broadcast = true
-                } else if (!udpSocket.isConnected) {
-                    Log.d(TAG, "openUDPSocket: socket was not connected")
-                    udpSocket = DatagramSocket()
-                    //udpSocket.connect(inetAddress, UDP_PORT)
-                    udpSocket.broadcast = true
-                }
-                // get remote addresses of image clients
-                //sendUDP("tcp")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "openUDPSocket: Exception: " + e.message)
-        }
-    }
-
-    private fun closeUDPSocket() {
-        try {
-            //Close the port
-            if (!udpSocket.isClosed) {
-                udpSocket.disconnect()
-                udpSocket.close()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "closeUDPSocket: IOException: " + e.message)
-        }
-    }
-
-    private fun openTCPSocket(inetAddress: InetAddress) {
-        var retries = 0
-        val maxRetries = 1
-        try {
-            //Open a port to send the package
-            if (tcpSocket == null){
-                println("tcpSocket was null.")
-                println("Opening tcp connection @ = $inetAddress")
-                tcpSocket = Socket(inetAddress.hostAddress, TCP_PORT)
-                tcpSocket.connect(InetSocketAddress(imageClientIP, TCP_PORT))
-
-            }
-            if (tcpSocket != null) {
-                if (tcpSocket.isClosed) {
-                    println("tcpSocket was closed.")
-                    println("Opening tcp connection @ = $inetAddress")
-                    tcpSocket = Socket(inetAddress.hostAddress, TCP_PORT)
-                    tcpSocket.connect(InetSocketAddress(imageClientIP, TCP_PORT))
-
-                } else if (!tcpSocket.isConnected) {
-                    println("tcpSocket was open but not connected.")
-                    tcpSocket.connect(InetSocketAddress(imageClientIP, TCP_PORT))
-
-                } else if (tcpSocket.isInputShutdown || tcpSocket.isOutputShutdown){
-                    println("tcpSocket had input/output shutdown.")
-                    println("Closing and opening again tcp connection @ = $inetAddress")
-                    tcpSocket.close()
-                    tcpSocket = Socket(inetAddress.hostAddress, TCP_PORT)
-                    tcpSocket.connect(InetSocketAddress(imageClientIP, TCP_PORT))
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "openTCPSocket: Exception: " + e.message)
-            // try once more
-            if (retries < maxRetries) {
-                retries++
-                if (e.message.toString().compareTo("Socket closed") == 0) {
-                    println("tcpSocket was -- actually -- closed.")
-                    println("Opening tcp connection @ = $inetAddress")
-                    tcpSocket = Socket(inetAddress.hostAddress, TCP_PORT)
-                    tcpSocket.connect(InetSocketAddress(imageClientIP, TCP_PORT))
-                }
-            }
-        }
-    }
-
-    private fun closeTCPSocket() {
-        try {
-            //Close the port
-            if (!tcpSocket.isClosed) {
-                tcpSocket.close()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "closeTCPSocket: IOException: " + e.message)
-        }
-    }
-
-    private fun writeIntTo4BytesToBuffer(data: Int) : ByteArray {
-        var buffer = ByteArray(4)
-        buffer[0] = (data shr 0).toByte()
-        buffer[1] = (data shr 8).toByte()
-        buffer[2] = (data shr 16).toByte()
-        buffer[3] = (data shr 24).toByte()
-        return buffer
-    }
-
-    private fun sendTCP(jpgbytes: ByteArray) {
-        // Hack Prevent crash (sending should be done using an async task)
-        val policy = StrictMode.ThreadPolicy.Builder().permitAll().build()
-        StrictMode.setThreadPolicy(policy)
-        try {
-            val networkWriter = DataOutputStream(tcpSocket!!.getOutputStream())
-            // add the size in the first 16 bytes
-            val newArray = writeIntTo4BytesToBuffer(jpgbytes.size) + jpgbytes
-            networkWriter.write(newArray)
-            networkWriter.flush()
-            println("fun sendTCP: ${jpgbytes.size}  bytes sent to: $imageClientIP:$TCP_PORT")
-        } catch (e: IOException) {
-            Log.e(TAG, "sendTCP: IOException: " + e.message)
-            closeTCPSocket();
-            isImageClientIPIdentified = false;
-        /*
-            // try again to open connection
-            closeTCPSocket()
-            // get the remote address
-            openUDPSocket(broadcastIP)
-            if (isImageClientIPIdentified){
-                openTCPSocket(imageClientIP)
-            }
-             */
-        }
-    }
-
-    private fun sendUDP(messageStr: String) {
-        // Hack Prevent crash (sending should be done using an async task)
-        val policy = StrictMode.ThreadPolicy.Builder().permitAll().build()
-        StrictMode.setThreadPolicy(policy)
-        try {
-            val sendData = messageStr.toByteArray()
-            val sendPacket = DatagramPacket(sendData, sendData.size, broadcastIP, UDP_PORT)
-            udpSocket.send(sendPacket)
-            println("fun sendBroadcast: \"$messageStr\" sent to: $broadcastIP:$UDP_PORT")
-
-            if (messageStr == "tcp"){
-                // wait for responces
-                val buffer = ByteArray(1024)
-                val packet = DatagramPacket(buffer, buffer.size)
-                udpSocket.soTimeout = 2000 // set timeout 2 secs
-                try {
-                    udpSocket.receive(packet)
-                    val stringData = String(packet.data, packet.offset, packet.length)
-                    println("UDP packet received = $stringData")
-                    // check if the udp we received is about the tcp connection request
-                    // first part of return string should be "tcp" (the request)
-                    if (stringData.split(":")[0].compareTo("tcp") == 0) {
-                        println("TCP details received")
-                        // get remote tcp address (and port, but for now port is static/just for one client)
-                        imageClientIP = InetAddress.getByName(stringData.split(":")[1])
-                        isImageClientIPIdentified = true
-                        // try to open tcp
-                        openTCPSocket(imageClientIP)
-                    }
-                }catch (e: Exception) {
-                    // timeout exception.
-                    println("Timeout reached!!! " + e);
-
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "sendUDP: Exception: " + e.message)
-        }
-    }
-
-    private fun sendUDP(jpgbytes: ByteArray) {
-        // Hack Prevent crash (sending should be done using an async task)
-        val policy = StrictMode.ThreadPolicy.Builder().permitAll().build()
-        StrictMode.setThreadPolicy(policy)
-        try {
-            val sendPacket = DatagramPacket(jpgbytes, jpgbytes.size, broadcastIP, UDP_PORT)
-            udpSocket.send(sendPacket)
-            println("fun sendBroadcast: ${jpgbytes.size}  bytes sent to: $broadcastIP:$UDP_PORT")
-        } catch (e: IOException) {
-            Log.e(TAG, "sendUDP: IOException: " + e.message)
-        }
     }
 
     private fun takePhoto() {}
 
     private fun captureVideo() {}
 
+    @SuppressLint("UnsafeOptInUsageError")
+    private fun switchCamera() {
+        //println("fun switchCamera : ")
+        if (currentCamera != null) {
+            Log.d(
+                TAG, "fun switchCamera : Current camera id : " + currentCamera?.let {
+                    Camera2CameraInfo.from(it.cameraInfo).cameraId
+                }
+            )
+            // CAMERA X provides only logical cameras.
+            // Most phones (all ?) have one (logical) on the back and one on the front
+            // with ids "0" and "1"
+
+            val allCam2Infos = cameraProvider.availableCameraInfos
+            println("fun switchCamera : allCam2Infos.size = " + allCam2Infos.size)
+            /*
+            var nextCameraId = Camera2CameraInfo.from(currentCamera!!.cameraInfo).cameraId
+            for (i in allCam2Infos.indices) {
+                if (Camera2CameraInfo.from(currentCamera!!.cameraInfo).cameraId.compareTo(
+                        Camera2CameraInfo.from(allCam2Infos[i]).cameraId
+                    ) == 0
+                ) {
+                    // the camera in position i of the list is the curent camera
+                    // just choose the next one - or if it is the last, switch to the first one
+                    nextCameraId = if (i < allCam2Infos.size - 1) {
+                        Camera2CameraInfo.from(allCam2Infos[i + 1]).cameraId
+                    } else {
+                        Camera2CameraInfo.from(allCam2Infos[0]).cameraId
+                    }
+                }
+            }
+             */
+            var nextCameraId = Camera2CameraInfo.from(currentCamera!!.cameraInfo).cameraId
+            nextCameraId = if (nextCameraId == "0"){
+                "1"
+            }else {
+                "0"
+            }
+            println("fun switchCamera : nextCameraId = $nextCameraId")
+            // create a filter in camera selector to choose the camera with the selected id
+            CameraSelector.Builder()
+                .addCameraFilter {
+                    it.filter { camInfo ->
+                        val thisCamId = Camera2CameraInfo.from(camInfo).cameraId
+                        thisCamId == nextCameraId
+                    }
+                }.build()
+
+            // rebind the usecases
+            rebindCameraUseCases()
+        }
+
+    }
+
     private fun showPreview() {
-        if (isShowingPreview) {
+        isShowingPreview = !isShowingPreview
+        rebindCameraUseCases()
+    }
+
+    private fun rebindCameraUseCases() {
+        if (!isShowingPreview) {
             try {
                 // Unbind use cases before rebinding
                 cameraProvider.unbindAll()
 
                 // Bind use cases to camera
                 if (cameraSelector != null) {
-                    cameraProvider.bindToLifecycle(
+                    currentCamera = cameraProvider.bindToLifecycle(
                         this, cameraSelector, imageAnalyzer
                     )
                 }
-                isShowingPreview = false
                 viewBinding.showPreviewButton.setText(getString(R.string.show_preview))
-
-
             } catch (exc: Exception) {
                 Log.e(TAG, "Use case binding failed when removing preview", exc)
             }
         } else {
-
             try {
                 // Unbind use cases before rebinding
                 cameraProvider.unbindAll()
 
                 // Bind use cases to camera
                 if (cameraSelector != null) {
-                    cameraProvider.bindToLifecycle(
+                    currentCamera = cameraProvider.bindToLifecycle(
                         this, cameraSelector, imagePreview, imageAnalyzer
                     )
                 }
-                isShowingPreview = true
                 viewBinding.showPreviewButton.setText(getString(R.string.stop_preview))
             } catch (exc: Exception) {
                 Log.e(TAG, "Use case binding failed when adding preview", exc)
             }
         }
+
+        // set zoom (switchable through a button 3 values 0.0f 0.5f 1.0f
+        // 0f so that it selects the wide angle lens
+        // 0.5f for tha main lens
+        // 1.0f for the telephoto
+        // if there are no lenses on the phone the zoom will be performed digitally (I guess)
+        currentCamera?.cameraControl?.setLinearZoom(currentLinearZoom)
     }
 
     @SuppressLint("UnsafeOptInUsageError")
     private fun selectExternalOrBestCamera(provider: ProcessCameraProvider): CameraSelector {
 
         val allCam2Infos = provider.availableCameraInfos
-        for(camInfo in allCam2Infos){
-            Log.d(TAG, "Hardware level of camera : " +
-                Camera2CameraInfo.from(camInfo).getCameraCharacteristic(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL)
-                    .toString()
+        for (camInfo in allCam2Infos) {
+            Log.d(
+                TAG, "Hardware level of camera : " +
+                        Camera2CameraInfo.from(camInfo)
+                            .getCameraCharacteristic(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL)
+                            .toString()
             )
-            val streamConfigurationMap = Camera2CameraInfo.from(camInfo).getCameraCharacteristic(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+            val streamConfigurationMap = Camera2CameraInfo.from(camInfo)
+                .getCameraCharacteristic(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
             if (streamConfigurationMap != null) {
-                Log.d(TAG,"JPEG output sizes : " + streamConfigurationMap.getOutputSizes(ImageFormat.JPEG).contentToString())
+                Log.d(
+                    TAG,
+                    "JPEG output sizes : " + streamConfigurationMap.getOutputSizes(ImageFormat.JPEG)
+                        .contentToString()
+                )
             }
         }
 
@@ -402,7 +306,7 @@ class MainActivity : AppCompatActivity() {
 
         cameraProviderFuture.addListener({
             // Used to bind the lifecycle of cameras to the lifecycle owner
-            cameraProvider= cameraProviderFuture.get()
+            cameraProvider = cameraProviderFuture.get()
 
             // Preview --not necessarry to be used
             imagePreview = Preview.Builder()
@@ -414,23 +318,14 @@ class MainActivity : AppCompatActivity() {
             val analysisBuilder = ImageAnalysis.Builder()
             val ext: Camera2Interop.Extender<*> = Camera2Interop.Extender(analysisBuilder)
 
-            ext.setCaptureRequestOption(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_STATE_LOCKED)
-            ext.setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
-            ext.setCaptureRequestOption(CaptureRequest.JPEG_QUALITY, 80)
-            ext.setCaptureRequestOption(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range<Int>(30, 60))
-            ext.setCaptureRequestOption(CaptureRequest.EDGE_MODE, CameraMetadata.EDGE_MODE_HIGH_QUALITY);
-            ext.setCaptureRequestOption(CaptureRequest.SHADING_MODE, CameraMetadata.SHADING_MODE_HIGH_QUALITY);
-            ext.setCaptureRequestOption(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_HIGH_QUALITY);
-            ext.setCaptureRequestOption(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CameraMetadata.COLOR_CORRECTION_ABERRATION_MODE_HIGH_QUALITY);
-            ext.setCaptureRequestOption(CaptureRequest.COLOR_CORRECTION_MODE, CameraMetadata.COLOR_CORRECTION_ABERRATION_MODE_HIGH_QUALITY);
-            ext.setCaptureRequestOption(CaptureRequest.HOT_PIXEL_MODE, CameraMetadata.HOT_PIXEL_MODE_HIGH_QUALITY);
-            ext.setCaptureRequestOption(CaptureRequest.NOISE_REDUCTION_MODE, CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY);
-            ext.setCaptureRequestOption(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_ON);
-
             //analysisBuilder.setTargetResolution(Size(1280, 720))
             //analysisBuilder.setTargetResolution(Size(1920, 1080))
             analysisBuilder.setTargetRotation(Surface.ROTATION_90)
             analysisBuilder.setTargetAspectRatio(AspectRatio.RATIO_16_9)
+            //analysisBuilder.setTargetAspectRatio(AspectRatio.RATIO_4_3)
+            analysisBuilder.setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            // this format is for tensorflow models that are used in mobile
+            //analysisBuilder.setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
 
 
             imageAnalyzer = analysisBuilder.build();
@@ -447,7 +342,11 @@ class MainActivity : AppCompatActivity() {
                         // every 10 seconds count fps and reset counter
                         val fps = numOfFrames / 10
                         numOfFrames = 0
-                        viewBinding.fpsTextview.setText("fps: $fps")
+                        // try to touch View of UI thread
+                        this@MainActivity.runOnUiThread(java.lang.Runnable {
+                            viewBinding.fpsTextview.setText("$fps")
+                        })
+
                         Log.d(TAG, "fps: $fps")
                     } else {
                         numOfFrames += 1
@@ -456,15 +355,7 @@ class MainActivity : AppCompatActivity() {
 
                 // try sending
                 if (success) {
-                    //sendUDP("size:${jpgbytes.size}")
-                    //sendUDP(jpgbytes)
-                    if (tcpSocket.isConnected && (!tcpSocket.isClosed)) {
-                        sendTCP(jpgbytes)
-                    }else {
-                        sendUDP("tcp")
-                        // and wait ... for connection to be established
-                        Thread.sleep(2000)  // wait for 2 second
-                    }
+                    connectionHandler.sendTCP(jpgbytes)
                 }
 
             })
@@ -474,22 +365,7 @@ class MainActivity : AppCompatActivity() {
             //val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
             // create a CameraSelector for the USB camera (or highest level internal camera)
             cameraSelector = selectExternalOrBestCamera(cameraProvider)
-
-
-            try {
-                // Unbind use cases before rebinding
-                cameraProvider.unbindAll()
-
-                // Bind use cases to camera
-                if (cameraSelector != null) {
-                    cameraProvider.bindToLifecycle(
-                        this, cameraSelector, imageAnalyzer
-                    )
-                }
-
-            } catch (exc: Exception) {
-                Log.e(TAG, "Use case binding failed", exc)
-            }
+            rebindCameraUseCases()
 
         }, ContextCompat.getMainExecutor(this))
 
@@ -503,13 +379,14 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        closeUDPSocket()
-        closeTCPSocket()
+        displayManager.unregisterDisplayListener(displayListener)
+        connectionHandler.destroySockets()
         cameraExecutor.shutdown()
     }
 
     companion object {
         private const val TAG = "StreamCam"
+        private const val HIGH_QUALITY = true
         private const val FILENAME_FORMAT = "yyyy-MM-dd-HH-mm-ss-SSS"
         private const val REQUEST_CODE_PERMISSIONS = 10
         private val REQUIRED_PERMISSIONS =

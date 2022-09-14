@@ -3,18 +3,23 @@ import time
 import cv2
 import os
 
+from PIL import Image
+
 from multiprocessing import Process
 from multiprocessing import Queue
 from enum import Enum
 
 # for coral
 from pycoral.adapters.common import input_size
+from pycoral.adapters.common import set_resized_input
 from pycoral.adapters.detect import get_objects
 from pycoral.utils.dataset import read_label_file
 from pycoral.utils.edgetpu import make_interpreter
 from pycoral.utils.edgetpu import run_inference
 
 import tflite_runtime.interpreter as tflite
+
+_DEBUG = True
 
 class DETECT_PROCESS_STATE(Enum):
     STOPPED = 1
@@ -57,17 +62,37 @@ class CoralDetector:
     def detectInImageProcess(self, imgQ:Queue, stateQ:Queue):
         self.detectProcessState = DETECT_PROCESS_STATE.RUNNING
         stateQ.put(self.detectProcessState)
-        labels = read_label_file("test_data/coco_labels.txt") #if args.labels else {}
-        interpreter = make_interpreter("test_data/ssd_mobilenet_v2_coco_quant_postprocess_edgetpu.tflite")
-        threshold = 0.1
-        top_k = 3
+        labels = read_label_file("../test_data/coco_labels.txt") #if args.labels else {}
+        interpreter = make_interpreter("../test_data/ssd_mobilenet_v2_coco_quant_postprocess_edgetpu.tflite")
+        #interpreter = make_interpreter("../test_data/ssd_mobilenet_v2_coco_quant_no_nms_edgetpu.tflite")
+        #labels = read_label_file("/home/mendel/trafficsigndetectionmodels/trafficsignmodel_labels.txt") #if args.labels else {}
+        #interpreter = make_interpreter("/home/mendel/trafficsigndetectionmodels/yolov5s.tflite")
+        #labels = read_label_file("/home/mendel/trafficsigndetectionmodels/centernet_mobilenetv2_fpn_kpts/label_map.txt")
+        #interpreter = make_interpreter("/home/mendel/trafficsigndetectionmodels/centernet_mobilenetv2_fpn_kpts/model.tflite")
+        #labels = read_label_file("/home/mendel/trafficsigndetectionmodels/vertexmodel/vertexmodel_labels.txt")
+        #interpreter = make_interpreter("/home/mendel/trafficsigndetectionmodels/vertexmodel/vertexmodel_edgetpu.tflite")
+        #interpreter = make_interpreter("/home/mendel/trafficsigndetectionmodels/mobile_tensoflowlite_model_coco/efficientdet-lite0_edgetpu.tflite")
+        #interpreter = make_interpreter("/home/mendel/trafficsigndetectionmodels/mobile_tensoflowlite_model_coco/mobilenetv1_edgetpu.tflite")
+        #interpreter = make_interpreter("/home/mendel/trafficsigndetectionmodels/efficientdet_dashcam/efficientdet-lite0-adastraffic_edgetpu.tflite")
+        #labels = read_label_file("/home/mendel/trafficsigndetectionmodels/efficientdet_dashcam/adastraffic-labels.txt")
+        #interpreter = make_interpreter("/home/mendel/trafficsigndetectionmodels/centernet_mobilenetv2_fpn_od/centernet_mobilenetv2_fpn_od_edgetpu.tflite")
+        #labels = read_label_file("/home/mendel/trafficsigndetectionmodels/centernet_mobilenetv2_fpn_od/label_map.txt")
+
+
+        threshold = 0.4
+        top_k = 20
         interpreter.allocate_tensors()
         inference_size = input_size(interpreter)
+
+        #scale = set_resized_input(
+        #    interpreter, image.size, lambda size: image.resize(size, Image.ANTIALIAS))
 
         while(self.startDetectProcess):
             if (not imgQ.empty()):
                 #prepare image
                 cv2_im = imgQ.get()
+                #self.my_print(f"received image size : {cv2_im.size}")
+                self.my_print(f"received image dimentions : {cv2_im.shape}")
                 cv2_im_rgb = cv2.cvtColor(cv2_im, cv2.COLOR_BGR2RGB)
                 cv2_im_rgb = cv2.resize(cv2_im_rgb, inference_size)
                 # inference
@@ -77,7 +102,12 @@ class CoralDetector:
                 #get results
                 objs = get_objects(interpreter, threshold)[:top_k]
 
-                print('%.2f ms' % (inference_time * 1000))
+                #interpreter.invoke()
+                #inference_time = time.perf_counter() - start
+                #objs = get_objects(interpreter, threshold,scale)
+
+                #self.my_print(f"{(inference_time * 1000)} ms")
+                self.my_print("{:.2f}".format((inference_time * 1000)))
 
                 #print('-------RESULTS--------')
                 #if not objs:
@@ -88,11 +118,11 @@ class CoralDetector:
                 #    print('  id:    ', obj.id)
                 #    print('  score: ', obj.score)
                 #    print('  bbox:  ', obj.bbox)
-
-                cv2_im = self.append_objs_to_img(cv2_im, inference_size, objs, labels)
-                cv2.imshow('frame', cv2_im)
-                if cv2.waitKey(1) & 0xFF == ord('q'):
-                    break
+                if (_DEBUG):
+                    cv2_im = self.append_objs_to_img(cv2_im, inference_size, objs, labels)
+                    cv2.imshow('frame', cv2_im)
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        break
 
         self.detectProcessState = DETECT_PROCESS_STATE.STOPPED
         stateQ.put(self.detectProcessState)
@@ -118,3 +148,7 @@ class CoralDetector:
         self.startDetectProcess = False
         self.detectProcess.terminate()
         self.detectProcess.kill()
+
+    def my_print(self,str):
+        if(_DEBUG):
+            print(str)
