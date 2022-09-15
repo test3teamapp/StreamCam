@@ -1,5 +1,6 @@
 package com.cang.streamcam
 
+import android.os.AsyncTask
 import android.os.StrictMode
 import android.util.Log
 import com.cang.streamcam.Utils.NetUtils
@@ -15,6 +16,48 @@ public class ConnectionHandler() {
     private var udpSocket = DatagramSocket()
     private var tcpSocket = Socket()
     var conState = ConnectionState.ALL_CLOSED
+
+    class SendTcpDataAsyncTask : AsyncTask<Any, Any, Any>() {
+
+        private fun writeIntTo4BytesToBuffer(data: Int): ByteArray {
+            var buffer = ByteArray(4)
+            buffer[0] = (data shr 0).toByte()
+            buffer[1] = (data shr 8).toByte()
+            buffer[2] = (data shr 16).toByte()
+            buffer[3] = (data shr 24).toByte()
+            return buffer
+        }
+
+        override fun onPreExecute() {
+            super.onPreExecute()
+            // ...
+        }
+
+        override fun onPostExecute(result: Any?) {
+            super.onPostExecute(result)
+            // ...
+        }
+
+        override fun doInBackground(vararg p0: Any?): Any {
+
+            var tcpSocket : Socket =  p0[0] as Socket
+            var jpgbytes : ByteArray = p0[1] as ByteArray
+
+            try {
+                val networkWriter = DataOutputStream(tcpSocket!!.getOutputStream())
+                // add the size in the first 16 bytes
+                val newArray = writeIntTo4BytesToBuffer(jpgbytes.size) + jpgbytes
+                networkWriter.write(newArray)
+                networkWriter.flush()
+                //println("fun sendTCP: ${jpgbytes.size}  bytes sent to: $imageClientIP:$TCP_PORT")
+            } catch (e: IOException) {
+                Log.e(TAG, "sendTCP: IOException: " + e.message)
+                return 1
+            }
+
+            return 0
+        }
+    }
 
     public fun createSockets() {
         findIPs()
@@ -150,21 +193,18 @@ public class ConnectionHandler() {
         }
     }
 
-    private fun writeIntTo4BytesToBuffer(data: Int): ByteArray {
-        var buffer = ByteArray(4)
-        buffer[0] = (data shr 0).toByte()
-        buffer[1] = (data shr 8).toByte()
-        buffer[2] = (data shr 16).toByte()
-        buffer[3] = (data shr 24).toByte()
-        return buffer
-    }
+    /**
 
+     */
     public fun sendTCP(jpgbytes: ByteArray) {
 
         if (!isTcpConnected()) {
             sendUDP("tcp")
             return
         }
+
+        SendTcpDataAsyncTask().execute(tcpSocket, jpgbytes)
+    /*
         // Hack Prevent crash (sending should be done using an async task)
         val policy = StrictMode.ThreadPolicy.Builder().permitAll().build()
         StrictMode.setThreadPolicy(policy)
@@ -180,6 +220,7 @@ public class ConnectionHandler() {
             closeTCPSocket();
 
         }
+     */
     }
 
     private fun sendUDP(messageStr: String) {

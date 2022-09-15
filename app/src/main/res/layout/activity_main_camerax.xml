@@ -5,17 +5,12 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="horizontal"
-    tools:context=".MainActivity">
+    tools:context=".MainActivity_camerax">
 
-    <com.cang.streamcam.AutoFitTextureView
-        android:id="@+id/texture"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_alignParentBottom="true"
-        android:layout_alignParentStart="true"
-        android:layout_alignParentTop="true"
-        tools:ignore="MissingConstraints" />
+    <androidx.camera.view.PreviewView
+        android:id="@+id/viewFinder"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
 
     <Button
         android:id="@+id/image_capture_button"
@@ -27,7 +22,7 @@
         android:textSize="10dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintLeft_toLeftOf="parent" />
-    //app:layout_constraintEnd_toStartOf="@id/vertical_centerline" />
+        //app:layout_constraintEnd_toStartOf="@id/vertical_centerline" />
 
     <TextView
         android:id="@+id/fps_textview"
@@ -42,7 +37,7 @@
         android:textSize="20dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintLeft_toRightOf="@id/image_capture_button" />
-    //app:layout_constraintEnd_toStartOf="@id/vertical_centerline" />
+        //app:layout_constraintEnd_toStartOf="@id/vertical_centerline" />
 
     <Button
         android:id="@+id/show_preview_button"
