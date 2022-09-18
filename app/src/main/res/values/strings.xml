@@ -7,4 +7,18 @@
     <string name="stop_preview">Stop Preview</string>
     <string name="switch_camera">Switch Camera</string>
     <string name="switch_zoom">Switch Zoom</string>
+    <string name="initializing"> Initializing</string>
+    <string name="play_services_unavailable">Google Play Services are unavailable on this device.</string>
+    <string name="start">Start</string>
+    <string name="stop">Stop</string>
+    <string name="not_started">Tap Start to receive location updates</string>
+
+    <string name="please_allow_permission">Please allow permission to access location</string>
+    <string name="permission_rationale_dialog_title">Permission needed</string>
+    <string name="permission_rationale_dialog_message">This app requires permission to access your location. Please accept.</string>
+
+    <string name="waiting_for_location">Waiting for location…</string>
+    <string name="location_lat_lng">Lat: %1$f\nLng: %2$f</string>
+    <string name="notification_channel_name">Location updates</string>
+    <string name="notification_title">Location updates</string>
 </resources>

@@ -2,50 +2,41 @@ package com.cang.streamcam
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.content.Context
+import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.*
 import android.hardware.camera2.*
 import android.hardware.display.DisplayManager
-import android.media.ImageReader
 import android.os.*
 import android.util.Log
-import android.util.Range
 import android.util.Size
 import android.util.SparseIntArray
 import android.view.Surface
 import android.view.TextureView
-import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.annotation.NonNull
 import androidx.appcompat.app.AppCompatActivity
-import androidx.camera.camera2.interop.Camera2CameraInfo
-import androidx.camera.camera2.interop.Camera2Interop
 import androidx.camera.core.*
-import androidx.camera.core.Camera
-import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.Recorder
 import androidx.camera.video.Recording
 import androidx.camera.video.VideoCapture
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.cang.streamcam.Utils.BitmapUtils
-import com.cang.streamcam.Utils.NetUtils
 import com.cang.streamcam.databinding.ActivityMainBinding
+import com.cang.streamcam.gps.ForegroundLocationServiceConnection
+import com.cang.streamcam.gps.LocationPreferences
+import com.cang.streamcam.gps.LocationRepository
+import com.cang.streamcam.gps.PlayServicesAvailabilityChecker
 import java.io.ByteArrayOutputStream
-import java.io.DataOutputStream
-import java.io.IOException
 import java.net.*
-import java.nio.ByteBuffer
 import java.util.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
-
 
 class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsResultCallback {
     private lateinit var viewBinding: ActivityMainBinding
@@ -180,6 +171,10 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
         this.runOnUiThread { Toast.makeText(this, text, Toast.LENGTH_SHORT).show() }
     }
 
+    private lateinit var playServicesAvailabilityChecker: PlayServicesAvailabilityChecker
+    private lateinit var locationRepository: LocationRepository
+    private lateinit var locationPreferences: LocationPreferences
+    private lateinit var serviceConnection: ForegroundLocationServiceConnection
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -204,11 +199,19 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
 
         //// --- PERFORMANCE WHEN CHANGING THIS ?????? ----- /////
         cameraExecutor = Executors.newSingleThreadExecutor()
+
+        playServicesAvailabilityChecker =  PlayServicesAvailabilityChecker()
+        locationRepository = LocationRepository()
+        locationPreferences = LocationPreferences()
+        serviceConnection =  ForegroundLocationServiceConnection()
+
+        serviceConnection.service?.startLocationUpdates()
     }
 
     override fun onResume() {
         super.onResume()
         startBackgroundThread()
+        serviceConnection.service?.startLocationUpdates()
 
         // When the screen is turned off and turned back on, the SurfaceTexture is already
         // available, and "onSurfaceTextureAvailable" will not be called. In that case, we can open
@@ -696,6 +699,7 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
         super.onDestroy()
         closeCamera()
         stopBackgroundThread()
+        serviceConnection.service?.stopLocationUpdates()
         displayManager.unregisterDisplayListener(displayListener)
         connectionHandler.destroySockets()
     }
@@ -708,7 +712,11 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
             mutableListOf(
                 Manifest.permission.CAMERA,
                 Manifest.permission.RECORD_AUDIO,
-                Manifest.permission.INTERNET
+                Manifest.permission.INTERNET,
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+                Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                //Maninest.permission.
             ).apply {
                 if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
                     add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
