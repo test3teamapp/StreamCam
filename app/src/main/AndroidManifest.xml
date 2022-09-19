@@ -13,6 +13,14 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Apps targeting Android 12 and later cannot request only ACCESS_FINE_LOCATION. They must
+         also request ACCESS_COARSE_LOCATION, and the user has the option to grant approximate
+         location only.
+         See https://developer.android.com/training/location/permissions#approximate-request
+    -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
     <application
         android:name=".MainApplication"
@@ -38,6 +46,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <service android:name=".gps.ForegroundLocationService" android:exported="false" />
     </application>
 
 </manifest>
