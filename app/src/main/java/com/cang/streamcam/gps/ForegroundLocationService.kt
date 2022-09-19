@@ -165,8 +165,8 @@ class ForegroundLocationService : LifecycleService() {
             return
         }
 
-        createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification(location))
+        //createNotificationChannel()
+        //startForeground(NOTIFICATION_ID, buildNotification(location))
     }
 
     private fun createNotificationChannel() {

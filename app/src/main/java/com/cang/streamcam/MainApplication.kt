@@ -9,7 +9,9 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
+import com.cang.streamcam.gps.PlayServicesAvailabilityChecker
 import com.google.android.gms.common.GoogleApiAvailability
+import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 
 /**
@@ -20,17 +22,23 @@ import com.google.android.gms.location.LocationServices
 
 class MainApplication : Application(), CameraXConfig.Provider {
 
-    public fun provideGoogleApiAvailability() = GoogleApiAvailability.getInstance()
+    private lateinit var ourFusedLC : FusedLocationProviderClient
+    private lateinit var privateDataStore : DataStore<Preferences>
 
-    fun provideFusedLocationProviderClient(
-        application: Application
-    ) = LocationServices.getFusedLocationProviderClient(application)
-
-
-    fun provideDataStore(application: Application): DataStore<Preferences> {
-        return PreferenceDataStoreFactory.create {
-            application.preferencesDataStoreFile("prefs")
+    fun provideFusedLocationProviderClient() : FusedLocationProviderClient {
+        if (ourFusedLC == null) {
+            ourFusedLC = LocationServices.getFusedLocationProviderClient(this)
         }
+        return ourFusedLC
+    }
+
+    fun provideDataStore(): DataStore<Preferences> {
+        if (privateDataStore == null){
+            privateDataStore = PreferenceDataStoreFactory.create {
+                this.preferencesDataStoreFile("prefs")
+            }
+        }
+        return privateDataStore
     }
 
     override fun getCameraXConfig(): CameraXConfig {
@@ -43,6 +51,11 @@ class MainApplication : Application(), CameraXConfig.Provider {
     override fun onCreate() {
         super.onCreate()
         // Required initialization logic here!
+        ourFusedLC = LocationServices.getFusedLocationProviderClient(this)
+        privateDataStore =  PreferenceDataStoreFactory.create {
+            this.preferencesDataStoreFile("prefs")
+        }
+
     }
 
     // Called by the system when the device configuration changes while your component is running.

@@ -46,7 +46,7 @@ class LocationPreferences {
     private companion object {
         val lastLocationKey = stringPreferencesKey("last_location")
         val dataStore = MainApplication.getApp()
-            ?.let { MainApplication.getApp()?.provideDataStore(it) }
+            ?.let { MainApplication.getApp()?.provideDataStore() }
     }
 
 }

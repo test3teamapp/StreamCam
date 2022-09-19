@@ -197,21 +197,28 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
         viewBinding.switchZoomButton.setOnClickListener { switchZoom() }
         mTextureView = viewBinding.texture
 
+        if(mTextureView == null){
+            Log.e(TAG,"Texture view is null")
+        }else {
+            Log.d(TAG,"Texture view is bound")
+        }
+
         //// --- PERFORMANCE WHEN CHANGING THIS ?????? ----- /////
         cameraExecutor = Executors.newSingleThreadExecutor()
 
-        playServicesAvailabilityChecker =  PlayServicesAvailabilityChecker()
-        locationRepository = LocationRepository()
-        locationPreferences = LocationPreferences()
-        serviceConnection =  ForegroundLocationServiceConnection()
+        //playServicesAvailabilityChecker =  PlayServicesAvailabilityChecker()
+        //locationRepository = LocationRepository()
+        //locationPreferences = LocationPreferences()
+        //serviceConnection =  ForegroundLocationServiceConnection()
 
-        serviceConnection.service?.startLocationUpdates()
+        //serviceConnection.service?.startLocationUpdates()
     }
 
     override fun onResume() {
         super.onResume()
         startBackgroundThread()
-        serviceConnection.service?.startLocationUpdates()
+        //serviceConnection.service?.startLocationUpdates()
+
 
         // When the screen is turned off and turned back on, the SurfaceTexture is already
         // available, and "onSurfaceTextureAvailable" will not be called. In that case, we can open
@@ -223,7 +230,11 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
             } else {
                 mTextureView!!.setSurfaceTextureListener(mSurfaceTextureListener)
             }
+        }else {
+
         }
+
+
     }
 
     override fun onPause() {
@@ -699,7 +710,7 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
         super.onDestroy()
         closeCamera()
         stopBackgroundThread()
-        serviceConnection.service?.stopLocationUpdates()
+        //serviceConnection.service?.stopLocationUpdates()
         displayManager.unregisterDisplayListener(displayListener)
         connectionHandler.destroySockets()
     }

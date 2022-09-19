@@ -19,6 +19,7 @@ package com.cang.streamcam.gps
 import android.content.Context
 import com.cang.streamcam.MainApplication
 import com.google.android.gms.common.ConnectionResult
+import com.google.android.gms.common.GoogleApiAvailability
 import com.google.android.gms.common.GooglePlayServicesUtil.isGooglePlayServicesAvailable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -26,8 +27,7 @@ import kotlinx.coroutines.withContext
 class PlayServicesAvailabilityChecker {
 
     suspend fun isGooglePlayServicesAvailable(ctx: Context) {
-        when (MainApplication.getApp()?.provideGoogleApiAvailability()
-            ?.isGooglePlayServicesAvailable(
+        when (GoogleApiAvailability.getInstance().isGooglePlayServicesAvailable(
                 ctx
             )) {
             ConnectionResult.SUCCESS -> true

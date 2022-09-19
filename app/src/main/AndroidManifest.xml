@@ -51,7 +51,7 @@
             android:foregroundServiceType="location"
             tools:ignore="Instantiatable">
              <!-- Any inner elements would go here. -->
-       </service> -->
+       </service>
     </application>
 
     </manifest>

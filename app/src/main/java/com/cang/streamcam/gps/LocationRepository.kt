@@ -48,20 +48,19 @@ class LocationRepository {
         // making a network request, etc.), either change to a background thread from the callback,
         // or create a HandlerThread and pass its Looper here instead.
         // See https://developer.android.com/reference/android/os/HandlerThread.
-        MainApplication.getApp()?.let {
-            MainApplication.getApp()?.provideFusedLocationProviderClient(it)?.requestLocationUpdates(
+        MainApplication.getApp()?.provideFusedLocationProviderClient()?.requestLocationUpdates(
                 request,
                 callback,
                 Looper.getMainLooper()
             )
-        }
+
         _isReceivingUpdates.value = true
     }
 
     fun stopLocationUpdates() {
         MainApplication.getApp()
             ?.let {
-                MainApplication.getApp()?.provideFusedLocationProviderClient(it)
+                MainApplication.getApp()?.provideFusedLocationProviderClient()
                     ?.removeLocationUpdates(callback as LocationCallback)
                 _isReceivingUpdates.value = false
                 _lastLocation.value = null
