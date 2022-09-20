@@ -720,7 +720,7 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
             }.toTypedArray()
 
         enum class CameraState {
-            CLOSED, OPEN_PREVIEW, OPEN_NOPREVIEW
+            CLOSED, OPEN_PREVIEW
         }
 
         /**
