@@ -35,6 +35,7 @@ import androidx.core.content.ContextCompat
 import com.cang.streamcam.Utils.BitmapUtils
 import com.cang.streamcam.Utils.NetUtils
 import com.cang.streamcam.databinding.ActivityMainBinding
+import com.cang.streamcam.gps.LocationProvider
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.io.IOException
@@ -209,7 +210,7 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
     override fun onResume() {
         super.onResume()
         startBackgroundThread()
-
+        LocationProvider.getInstance(this).startLocationUpdates()
         // When the screen is turned off and turned back on, the SurfaceTexture is already
         // available, and "onSurfaceTextureAvailable" will not be called. In that case, we can open
         // a camera and start preview from here (otherwise, we wait until the surface is ready in
@@ -696,6 +697,7 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
         super.onDestroy()
         closeCamera()
         stopBackgroundThread()
+        LocationProvider.getInstance(this).stopLocationUpdates()
         displayManager.unregisterDisplayListener(displayListener)
         connectionHandler.destroySockets()
     }
@@ -708,7 +710,9 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
             mutableListOf(
                 Manifest.permission.CAMERA,
                 Manifest.permission.RECORD_AUDIO,
-                Manifest.permission.INTERNET
+                Manifest.permission.INTERNET,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+                Manifest.permission.ACCESS_FINE_LOCATION
             ).apply {
                 if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
                     add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
