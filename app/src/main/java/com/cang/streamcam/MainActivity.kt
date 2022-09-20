@@ -26,8 +26,6 @@ import androidx.camera.video.VideoCapture
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.cang.streamcam.databinding.ActivityMainBinding
-import com.cang.streamcam.gps.ForegroundLocationService
-import com.cang.streamcam.gps.ForegroundLocationServiceConnection
 import java.io.ByteArrayOutputStream
 import java.net.*
 import java.util.*
@@ -118,8 +116,6 @@ class MainActivity : AppCompatActivity(), ActivityCompat.OnRequestPermissionsRes
      */
     private var mSensorOrientation = 0
 
-    private val mLocationServiceConnection = ForegroundLocationServiceConnection()
-    private val mIsLocationServiceBound = false
 
     private val displayManager by lazy {
         this.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
@@ -196,23 +192,12 @@ class MainActivity : AppCompatActivity(), ActivityCompat.OnRequestPermissionsRes
         //// --- PERFORMANCE WHEN CHANGING THIS ?????? ----- /////
         mCameraExecutor = Executors.newSingleThreadExecutor()
 
-        // bound location service
-        Intent(this, ForegroundLocationService::class.java).also { intent ->
-            bindService(
-                intent,
-                mLocationServiceConnection,
-                Context.BIND_AUTO_CREATE
-            )
-        }
-        // start location updates
-        mLocationServiceConnection.service?.startLocationUpdates()
 
     }
 
     override fun onResume() {
         super.onResume()
         startBackgroundThread()
-        mLocationServiceConnection.service?.startLocationUpdates()
         // When the screen is turned off and turned back on, the SurfaceTexture is already
         // available, and "onSurfaceTextureAvailable" will not be called. In that case, we can open
         // a camera and start preview from here (otherwise, we wait until the surface is ready in
@@ -702,7 +687,6 @@ class MainActivity : AppCompatActivity(), ActivityCompat.OnRequestPermissionsRes
         super.onDestroy()
         closeCamera()
         stopBackgroundThread()
-        mLocationServiceConnection.service?.stopLocationUpdates()
         displayManager.unregisterDisplayListener(displayListener)
         connectionHandler.destroySockets()
     }
@@ -715,10 +699,7 @@ class MainActivity : AppCompatActivity(), ActivityCompat.OnRequestPermissionsRes
             mutableListOf(
                 Manifest.permission.CAMERA,
                 Manifest.permission.RECORD_AUDIO,
-                Manifest.permission.INTERNET,
-                Manifest.permission.ACCESS_BACKGROUND_LOCATION,
-                Manifest.permission.ACCESS_COARSE_LOCATION,
-                Manifest.permission.ACCESS_FINE_LOCATION
+                Manifest.permission.INTERNET
             ).apply {
                 if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
                     add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
