@@ -60,7 +60,7 @@ import kotlinx.coroutines.launch
 class ForegroundLocationService : LifecycleService() {
 
 
-    //lateinit var locationRepository: LocationRepository
+     private lateinit var locationRepository: LocationRepository
 
 
     //lateinit var locationPreferences: LocationPreferences
@@ -77,6 +77,7 @@ class ForegroundLocationService : LifecycleService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         Log.d(TAG,"... started")
+        locationRepository = LocationRepository.getInstance(this)
 
         // This action comes from our ongoing notification. The user requested to stop updates.
         if (intent?.action == ACTION_STOP_UPDATES) {
@@ -97,13 +98,13 @@ class ForegroundLocationService : LifecycleService() {
                 // and the service will stop when we manage its lifetime below. Then the user
                 // will have to open the app to turn updates on again.
 
-                //locationRepository.startLocationUpdates()
+                locationRepository.startLocationUpdates()
 
 
             }
             // Update any foreground notification when we receive location updates.
             lifecycleScope.launch {
-                //locationRepository.lastLocation.collect(::showNotification)
+                locationRepository.lastLocation.collect(::showNotification)
             }
         }
 
@@ -152,7 +153,7 @@ class ForegroundLocationService : LifecycleService() {
             isBound() -> exitForeground()
 
             // Location updates were started.
-            //locationRepository.isReceivingLocationUpdates.value -> enterForeground()
+            locationRepository.isReceivingLocationUpdates.value -> enterForeground()
 
             // Nothing to do, so we can stop.
             else -> stopSelf()
@@ -173,9 +174,9 @@ class ForegroundLocationService : LifecycleService() {
             isForeground = true
 
             // Show notification with the latest location.
-            val locprovider: String? = null
-            val loc:Location = Location(locprovider)
-            showNotification(loc)//locationRepository.lastLocation.value)
+            //val locprovider: String? = null
+            //val loc:Location = Location(locprovider)
+            showNotification(locationRepository.lastLocation.value)
         }
     }
 
@@ -237,11 +238,11 @@ class ForegroundLocationService : LifecycleService() {
     // Methods for clients.
 
     fun startLocationUpdates() {
-        //locationRepository.startLocationUpdates()
+        locationRepository.startLocationUpdates()
     }
 
     fun stopLocationUpdates() {
-        //locationRepository.stopLocationUpdates()
+        locationRepository.stopLocationUpdates()
     }
 
     /** Binder which provides clients access to the service. */
@@ -262,7 +263,7 @@ class ForegroundLocationService : LifecycleService() {
  * ServiceConnection that provides access to a [ForegroundLocationService].
  */
 
-class ForegroundLocationServiceConnection  : ServiceConnection {
+class ForegroundLocationServiceConnection : ServiceConnection {
 
     var service: ForegroundLocationService? = null
         private set
