@@ -25,16 +25,9 @@ import androidx.camera.video.Recording
 import androidx.camera.video.VideoCapture
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.cang.streamcam.Utils.PlayServicesAvailabilityChecker
-import com.cang.streamcam.Utils.PlayServicesAvailableState
 import com.cang.streamcam.databinding.ActivityMainBinding
 import com.cang.streamcam.gps.ForegroundLocationService
 import com.cang.streamcam.gps.ForegroundLocationServiceConnection
-import kotlinx.coroutines.MainScope
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 import java.net.*
 import java.util.*
@@ -169,9 +162,6 @@ class MainActivity : AppCompatActivity(), ActivityCompat.OnRequestPermissionsRes
         override fun onDisplayChanged(displayid: Int) = Unit
     }
 
-    private val mScopeForCoroutines = MainScope()
-    private var mPlayServicesAvailableState : PlayServicesAvailableState = PlayServicesAvailableState.Initializing
-
     /**
      * Shows a [Toast] on the UI thread.
      *
@@ -206,25 +196,6 @@ class MainActivity : AppCompatActivity(), ActivityCompat.OnRequestPermissionsRes
         //// --- PERFORMANCE WHEN CHANGING THIS ?????? ----- /////
         mCameraExecutor = Executors.newSingleThreadExecutor()
 
-        // check play services
-        mScopeForCoroutines.launch {
-
-            mPlayServicesAvailableState =
-                if (PlayServicesAvailabilityChecker.getInstance(this@MainActivity).isGooglePlayServicesAvailable()) {
-                    PlayServicesAvailableState.PlayServicesAvailable
-                } else {
-                    PlayServicesAvailableState.PlayServicesUnavailable
-                }
-            if (mPlayServicesAvailableState ==  PlayServicesAvailableState.PlayServicesUnavailable){
-                Toast.makeText(
-                    this@MainActivity,
-                    "GOOGLE PLAY SERVICES NOT INSTALLED ",
-                    Toast.LENGTH_SHORT
-                ).show()
-                finish()
-            }
-        }
-
         // bound location service
         Intent(this, ForegroundLocationService::class.java).also { intent ->
             bindService(
@@ -233,16 +204,15 @@ class MainActivity : AppCompatActivity(), ActivityCompat.OnRequestPermissionsRes
                 Context.BIND_AUTO_CREATE
             )
         }
+        // start location updates
+        mLocationServiceConnection.service?.startLocationUpdates()
 
     }
 
     override fun onResume() {
         super.onResume()
         startBackgroundThread()
-        // start location updates
-        if(mPlayServicesAvailableState == PlayServicesAvailableState.PlayServicesAvailable) {
-            mLocationServiceConnection.service?.startLocationUpdates()
-        }
+        mLocationServiceConnection.service?.startLocationUpdates()
         // When the screen is turned off and turned back on, the SurfaceTexture is already
         // available, and "onSurfaceTextureAvailable" will not be called. In that case, we can open
         // a camera and start preview from here (otherwise, we wait until the surface is ready in
@@ -385,12 +355,7 @@ class MainActivity : AppCompatActivity(), ActivityCompat.OnRequestPermissionsRes
             ActivityCompat.requestPermissions(
                 this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS
             )
-            Toast.makeText(
-                this@MainActivity,
-                "NOT ALL PERMISSIONS GRANTED ",
-                Toast.LENGTH_SHORT
-            ).show()
-            finish()
+            return
         }
         setUpCameraOutputs(width, height)
         configureTransform(width, height)
