@@ -2,44 +2,34 @@ package com.cang.streamcam
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.*
 import android.hardware.camera2.*
 import android.hardware.display.DisplayManager
-import android.media.ImageReader
 import android.os.*
 import android.util.Log
-import android.util.Range
 import android.util.Size
 import android.util.SparseIntArray
 import android.view.Surface
 import android.view.TextureView
-import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.annotation.NonNull
 import androidx.appcompat.app.AppCompatActivity
-import androidx.camera.camera2.interop.Camera2CameraInfo
-import androidx.camera.camera2.interop.Camera2Interop
 import androidx.camera.core.*
-import androidx.camera.core.Camera
-import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.Recorder
 import androidx.camera.video.Recording
 import androidx.camera.video.VideoCapture
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.cang.streamcam.Utils.BitmapUtils
-import com.cang.streamcam.Utils.NetUtils
 import com.cang.streamcam.databinding.ActivityMainBinding
+import com.cang.streamcam.gps.ForegroundLocationService
+import com.cang.streamcam.gps.ForegroundLocationServiceConnection
 import java.io.ByteArrayOutputStream
-import java.io.DataOutputStream
-import java.io.IOException
 import java.net.*
-import java.nio.ByteBuffer
 import java.util.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -47,19 +37,19 @@ import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 
 
-class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsResultCallback {
-    private lateinit var viewBinding: ActivityMainBinding
+class MainActivity : AppCompatActivity(), ActivityCompat.OnRequestPermissionsResultCallback {
+    private lateinit var mViewBinding: ActivityMainBinding
 
-    private var currentLinearZoom: Float = 0f
+    private var mCurrentLinearZoom: Float = 0f
     private var imageCapture: ImageCapture? = null
     private var videoCapture: VideoCapture<Recorder>? = null
     private var recording: Recording? = null
-    private var isShowingPreview = false
+    private var mIsShowingPreview = false
 
-    private lateinit var cameraExecutor: ExecutorService
+    private lateinit var mCameraExecutor: ExecutorService
 
-    private var startCountFrameMillSecs = System.currentTimeMillis()
-    private var numOfFrames = 0
+    private var mStartCountFrameMillSecs = System.currentTimeMillis()
+    private var mNumOfFrames = 0
 
     /**
      * ID of the current [CameraDevice].
@@ -128,7 +118,8 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
      */
     private var mSensorOrientation = 0
 
-
+    private val mLocationServiceConnection = ForegroundLocationServiceConnection()
+    private val mIsLocationServiceBound = false
 
     private val displayManager by lazy {
         this.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
@@ -183,8 +174,8 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        viewBinding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(viewBinding.root)
+        mViewBinding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(mViewBinding.root)
         // keep screen always on
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
@@ -194,22 +185,34 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
         connectionHandler.createSockets()
 
         // Set up the listeners for take photo and video capture buttons
-        viewBinding.imageCaptureButton.setOnClickListener { takePhoto() }
-        viewBinding.videoCaptureButton.setOnClickListener { captureVideo() }
-        viewBinding.showPreviewButton.setOnClickListener { showPreview() }
-        viewBinding.fpsTextview.setText("fps");
-        viewBinding.switchCameraButton.setOnClickListener { switchCamera() }
-        viewBinding.switchZoomButton.setOnClickListener { switchZoom() }
-        mTextureView = viewBinding.texture
+        mViewBinding.imageCaptureButton.setOnClickListener { takePhoto() }
+        mViewBinding.videoCaptureButton.setOnClickListener { captureVideo() }
+        mViewBinding.showPreviewButton.setOnClickListener { showPreview() }
+        mViewBinding.fpsTextview.setText("fps");
+        mViewBinding.switchCameraButton.setOnClickListener { switchCamera() }
+        mViewBinding.switchZoomButton.setOnClickListener { switchZoom() }
+        mTextureView = mViewBinding.texture
 
         //// --- PERFORMANCE WHEN CHANGING THIS ?????? ----- /////
-        cameraExecutor = Executors.newSingleThreadExecutor()
+        mCameraExecutor = Executors.newSingleThreadExecutor()
+
+        // bound location service
+        Intent(this, ForegroundLocationService::class.java).also { intent ->
+            bindService(
+                intent,
+                mLocationServiceConnection,
+                Context.BIND_AUTO_CREATE
+            )
+        }
+        // start location updates
+        mLocationServiceConnection.service?.startLocationUpdates()
+
     }
 
     override fun onResume() {
         super.onResume()
         startBackgroundThread()
-
+        mLocationServiceConnection.service?.startLocationUpdates()
         // When the screen is turned off and turned back on, the SurfaceTexture is already
         // available, and "onSurfaceTextureAvailable" will not be called. In that case, we can open
         // a camera and start preview from here (otherwise, we wait until the surface is ready in
@@ -352,6 +355,7 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
             ActivityCompat.requestPermissions(
                 this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS
             )
+            return
         }
         setUpCameraOutputs(width, height)
         configureTransform(width, height)
@@ -489,7 +493,7 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
                             // Finally, we start displaying the camera preview.
                             mPreviewRequest = mPreviewRequestBuilder!!.build()
                             mCaptureSession!!.setRepeatingRequest(
-                                mPreviewRequest!!,mCaptureCallback, mBackgroundHandler
+                                mPreviewRequest!!, mCaptureCallback, mBackgroundHandler
                             )
                         } catch (e: CameraAccessException) {
                             e.printStackTrace()
@@ -545,11 +549,11 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
     }
 
     /**
-    * Retrieves the JPEG orientation from the specified screen rotation.
-    *
-    * @param rotation The screen rotation.
-    * @return The JPEG orientation (one of 0, 90, 270, and 360)
-    */
+     * Retrieves the JPEG orientation from the specified screen rotation.
+     *
+     * @param rotation The screen rotation.
+     * @return The JPEG orientation (one of 0, 90, 270, and 360)
+     */
     private fun getOrientation(rotation: Int): Int {
         // Sensor orientation is 90 for most devices, or 270 for some devices (eg. Nexus 5X)
         // We have to take that into account and rotate JPEG properly.
@@ -598,37 +602,39 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
         override fun onSurfaceTextureUpdated(texture: SurfaceTexture) {
             if (mTextureView != null) {
                 //val thread = Thread {
-                    val image: Bitmap? = mTextureView?.getBitmap()
-                    //Convert bitmap to byte array
-                    val bos = ByteArrayOutputStream()
-                    if (image != null) {
-                        image.compress(Bitmap.CompressFormat.JPEG, 80, bos)
-                        val jpgdata = bos.toByteArray()
-                        //Log.d(TAG, "jpg image size : ${jpgdata.size} bytes")
-                        // return the data to main executor
-                        //Log.d(TAG,"image captured . size : " + image.width + "x" + image.height)
-                        // try sending
-                        connectionHandler.sendTCP(jpgdata)
-                    }
+                val image: Bitmap? = mTextureView?.getBitmap()
+                //Convert bitmap to byte array
+                val bos = ByteArrayOutputStream()
+                if (image != null) {
+                    image.compress(Bitmap.CompressFormat.JPEG, 80, bos)
+                    val jpgdata = bos.toByteArray()
+                    //Log.d(TAG, "jpg image size : ${jpgdata.size} bytes")
+                    // return the data to main executor
+                    //Log.d(TAG,"image captured . size : " + image.width + "x" + image.height)
+                    // try sending
+                    connectionHandler.sendTCP(jpgdata)
+                }
                 //}
                 //thread.start()
             }
-            if (numOfFrames == 0) {
-                startCountFrameMillSecs = System.currentTimeMillis()
-                numOfFrames += 1
+            if (mNumOfFrames == 0) {
+                mStartCountFrameMillSecs = System.currentTimeMillis()
+                mNumOfFrames += 1
             } else {
-                if (System.currentTimeMillis() - startCountFrameMillSecs >= 10 * 1000) {
+                if (System.currentTimeMillis() - mStartCountFrameMillSecs >= 10 * 1000) {
                     // every 10 seconds count fps and reset counter
-                    val fps = numOfFrames / 10
-                    numOfFrames = 0
+                    val fps = mNumOfFrames / 10
+                    mNumOfFrames = 0
                     Log.d(TAG, "fps: $fps")
                     // try to touch View of UI thread
+
                     this@MainActivity.runOnUiThread(java.lang.Runnable {
-                        viewBinding.fpsTextview.setText("$fps")
+                        mViewBinding.fpsTextview.setText("$fps")
                     })
 
+
                 } else {
-                    numOfFrames += 1
+                    mNumOfFrames += 1
                 }
             }
         }
@@ -660,11 +666,11 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
     }
 
     private fun switchZoom() {
-        if(currentLinearZoom == 0.0f){
-            currentLinearZoom = 0.5f
-        }else if (currentLinearZoom == 0.5f){
-            currentLinearZoom = 1.0f
-        }else currentLinearZoom= 0.0f
+        if (mCurrentLinearZoom == 0.0f) {
+            mCurrentLinearZoom = 0.5f
+        } else if (mCurrentLinearZoom == 0.5f) {
+            mCurrentLinearZoom = 1.0f
+        } else mCurrentLinearZoom = 0.0f
 
         //rebindCameraUseCases()
     }
@@ -678,7 +684,7 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
     }
 
     private fun showPreview() {
-        isShowingPreview = !isShowingPreview
+        mIsShowingPreview = !mIsShowingPreview
         rebindCameraUseCases()
     }
 
@@ -696,6 +702,7 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
         super.onDestroy()
         closeCamera()
         stopBackgroundThread()
+        mLocationServiceConnection.service?.stopLocationUpdates()
         displayManager.unregisterDisplayListener(displayListener)
         connectionHandler.destroySockets()
     }
@@ -708,7 +715,10 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
             mutableListOf(
                 Manifest.permission.CAMERA,
                 Manifest.permission.RECORD_AUDIO,
-                Manifest.permission.INTERNET
+                Manifest.permission.INTERNET,
+                Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+                Manifest.permission.ACCESS_FINE_LOCATION
             ).apply {
                 if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
                     add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
@@ -728,6 +738,7 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
          * Max preview height that is guaranteed by Camera2 API
          */
         private const val MAX_PREVIEW_HEIGHT = 1080
+
         /**
          * Conversion from screen rotation to JPEG orientation.
          */

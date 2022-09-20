@@ -19,6 +19,7 @@ package com.cang.streamcam.gps
 //import com.google.android.gms.location.sample.foregroundlocation.data.LocationPreferences
 //import com.google.android.gms.location.sample.foregroundlocation.data.LocationRepository
 //import com.google.android.gms.location.sample.foregroundlocation.ui.hasPermission
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -31,6 +32,7 @@ import android.os.Binder
 import android.os.Build.VERSION
 import android.os.Build.VERSION_CODES
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
@@ -71,8 +73,10 @@ class ForegroundLocationService : LifecycleService() {
 
     private fun isBound() = bindCount > 0
 
+    @SuppressLint("LongLogTag")
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
+        Log.d(TAG,"... started")
 
         // This action comes from our ongoing notification. The user requested to stop updates.
         if (intent?.action == ACTION_STOP_UPDATES) {
@@ -121,8 +125,10 @@ class ForegroundLocationService : LifecycleService() {
         handleBind()
     }
 
+    @SuppressLint("LongLogTag")
     private fun handleBind() {
         bindCount++
+        Log.d(TAG,"... binded")
         // Start ourself. This will let us manage our lifetime separately from bound clients.
         startService(Intent(this, this::class.java))
     }
@@ -153,8 +159,10 @@ class ForegroundLocationService : LifecycleService() {
         }
     }
 
+    @SuppressLint("LongLogTag")
     private fun exitForeground() {
         if (isForeground) {
+            Log.d(TAG,"... exiting foreground")
             isForeground = false
             stopForeground(true)
         }
@@ -242,6 +250,7 @@ class ForegroundLocationService : LifecycleService() {
     }
 
     private companion object {
+        const val TAG = "ForegroundLocationService"
         const val UNBIND_DELAY_MILLIS = 2000.toLong() // 2 seconds
         const val NOTIFICATION_ID = 1
         const val NOTIFICATION_CHANNEL_ID = "LocationUpdates"
@@ -252,8 +261,8 @@ class ForegroundLocationService : LifecycleService() {
 /**
  * ServiceConnection that provides access to a [ForegroundLocationService].
  */
-/*
-class ForegroundLocationServiceConnection @Inject constructor() : ServiceConnection {
+
+class ForegroundLocationServiceConnection  : ServiceConnection {
 
     var service: ForegroundLocationService? = null
         private set
@@ -267,4 +276,3 @@ class ForegroundLocationServiceConnection @Inject constructor() : ServiceConnect
         service = null
     }
 }
-*/
