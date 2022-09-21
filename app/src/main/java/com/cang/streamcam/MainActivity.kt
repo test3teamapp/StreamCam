@@ -198,9 +198,9 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
         viewBinding.imageCaptureButton.setOnClickListener { takePhoto() }
         viewBinding.videoCaptureButton.setOnClickListener { captureVideo() }
         viewBinding.showPreviewButton.setOnClickListener { showPreview() }
-        viewBinding.fpsTextview.setText("fps");
+        viewBinding.fpsTextview.setText("fps")
         viewBinding.switchCameraButton.setOnClickListener { switchCamera() }
-        viewBinding.switchZoomButton.setOnClickListener { switchZoom() }
+        viewBinding.speedTextview.setText("-1")
         mTextureView = viewBinding.texture
 
         //// --- PERFORMANCE WHEN CHANGING THIS ?????? ----- /////
@@ -626,6 +626,8 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
                     // try to touch View of UI thread
                     this@MainActivity.runOnUiThread(java.lang.Runnable {
                         viewBinding.fpsTextview.setText("$fps")
+                        // update speed
+                        LocationProvider.getInstance(this@MainActivity).lastLocation!!.speed.toString()
                     })
 
                 } else {

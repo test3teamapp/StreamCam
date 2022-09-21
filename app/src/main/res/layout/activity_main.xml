@@ -77,18 +77,20 @@
         android:textSize="10dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintLeft_toRightOf="@id/video_capture_button" />
-    <Button
-        android:id="@+id/switch_zoom_button"
-        android:layout_width="30dp"
+
+    <TextView
+        android:id="@+id/speed_textview"
+        android:layout_width="50dp"
         android:layout_height="30dp"
         android:layout_marginLeft="30dp"
         android:layout_marginBottom="30dp"
+        android:background="#000000"
         android:elevation="2dp"
-        android:text="@string/switch_camera"
-        android:textSize="10dp"
+        android:text=""
+        android:textColor="@color/white"
+        android:textSize="20dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintLeft_toRightOf="@id/switch_camera_button" />
-
 
 
     <androidx.constraintlayout.widget.Guideline
