@@ -225,7 +225,7 @@ public class ConnectionHandler private constructor() {
      */
     }
 
-    private fun sendUDP(messageStr: String) {
+    fun sendUDP(messageStr: String) {
         // Hack Prevent crash (sending should be done using an async task)
         val policy = StrictMode.ThreadPolicy.Builder().permitAll().build()
         StrictMode.setThreadPolicy(policy)
@@ -277,7 +277,7 @@ public class ConnectionHandler private constructor() {
         private const val UDP_PORT = 20001
         private const val TCP_PORT = 20002
 
-        var singletonObject: ConnectionHandler? = null
+        private var singletonObject: ConnectionHandler? = null
 
         fun getInstance(): ConnectionHandler {
             if (singletonObject == null) {

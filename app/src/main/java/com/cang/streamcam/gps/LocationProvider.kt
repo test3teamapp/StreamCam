@@ -25,6 +25,7 @@ import android.content.pm.PackageManager
 import android.location.Location
 import android.os.Looper
 import androidx.core.app.ActivityCompat
+import com.cang.streamcam.ConnectionHandler
 import com.google.android.gms.location.*
 
 
@@ -103,6 +104,12 @@ class LocationProvider private constructor(ctx: Context) {
         override fun onLocationResult(result: LocationResult) {
             lastLocation = result.lastLocation as Location
             Log.d("LocProvider/Callback", lastLocation!!.speed.toString())
+            // sent over udp
+            if (ConnectionHandler.getInstance().conState.equals(ConnectionHandler.ConnectionState.UDP_OPEN) &&
+                    lastLocation != null) {
+                // TODO update StreamCamReceiver.py to receive the "speed:xxx" data
+                ConnectionHandler.getInstance().sendUDP("speed:" + lastLocation!!.speed.toString())
+            }
         }
     }
 

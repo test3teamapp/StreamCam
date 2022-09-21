@@ -36,6 +36,7 @@ import com.cang.streamcam.Utils.BitmapUtils
 import com.cang.streamcam.Utils.NetUtils
 import com.cang.streamcam.databinding.ActivityMainBinding
 import com.cang.streamcam.gps.LocationProvider
+import com.cang.streamcam.sensors.SenseDataProvider
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.io.IOException
@@ -151,11 +152,7 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
                     }
                 }
             } else {
-                Toast.makeText(
-                    this,
-                    "Permissions not granted by the user.",
-                    Toast.LENGTH_SHORT
-                ).show()
+                showToast("Permissions not granted by the user.", true)
                 finish()
             }
         }
@@ -177,8 +174,12 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
      *
      * @param text The message to show
      */
-    private fun showToast(text: String) {
-        this.runOnUiThread { Toast.makeText(this, text, Toast.LENGTH_SHORT).show() }
+    private fun showToast(text: String, showLong:Boolean) {
+        if (showLong) {
+            this.runOnUiThread { Toast.makeText(this, text, Toast.LENGTH_LONG).show() }
+        }else {
+            this.runOnUiThread { Toast.makeText(this, text, Toast.LENGTH_SHORT).show() }
+        }
     }
 
 
@@ -211,6 +212,10 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
         super.onResume()
         startBackgroundThread()
         LocationProvider.getInstance(this).startLocationUpdates()
+        val hasGyro = SenseDataProvider.getInstance(this).findSensors()
+        if (hasGyro){
+            showToast("Has Gyro sensor !", true)
+        }
         // When the screen is turned off and turned back on, the SurfaceTexture is already
         // available, and "onSurfaceTextureAvailable" will not be called. In that case, we can open
         // a camera and start preview from here (otherwise, we wait until the surface is ready in
@@ -500,7 +505,7 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
                     override fun onConfigureFailed(
                         @NonNull cameraCaptureSession: CameraCaptureSession
                     ) {
-                        showToast("Failed")
+                        showToast("Camera Preview Configuration Failed", true)
                     }
                 }, null
             )
