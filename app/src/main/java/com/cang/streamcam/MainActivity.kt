@@ -191,7 +191,7 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
 
         // Every time the orientation of device changes, update rotation for use cases
         displayManager.registerDisplayListener(displayListener, null)
-        connectionHandler = ConnectionHandler()
+        connectionHandler = ConnectionHandler.getInstance()
         connectionHandler.createSockets()
 
         // Set up the listeners for take photo and video capture buttons

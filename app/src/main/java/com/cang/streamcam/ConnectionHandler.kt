@@ -1,14 +1,16 @@
 package com.cang.streamcam
 
+import android.content.Context
 import android.os.AsyncTask
 import android.os.StrictMode
 import android.util.Log
 import com.cang.streamcam.Utils.NetUtils
+import com.cang.streamcam.gps.LocationProvider
 import java.io.DataOutputStream
 import java.io.IOException
 import java.net.*
 
-public class ConnectionHandler() {
+public class ConnectionHandler private constructor() {
 
     private lateinit var connectedIpArray: ArrayList<String>
     private lateinit var broadcastIP: InetAddress
@@ -266,19 +268,6 @@ public class ConnectionHandler() {
         }
     }
 
-    private fun sendUDP(jpgbytes: ByteArray) {
-        // Hack Prevent crash (sending should be done using an async task)
-        val policy = StrictMode.ThreadPolicy.Builder().permitAll().build()
-        StrictMode.setThreadPolicy(policy)
-        try {
-            val sendPacket = DatagramPacket(jpgbytes, jpgbytes.size, broadcastIP, UDP_PORT)
-            udpSocket.send(sendPacket)
-            println("fun sendBroadcast: ${jpgbytes.size}  bytes sent to: $broadcastIP:${UDP_PORT}")
-        } catch (e: IOException) {
-            Log.e(TAG, "sendUDP: IOException: " + e.message)
-        }
-    }
-
     enum class ConnectionState {
         ALL_CLOSED, UDP_OPEN, TCP_CONNECTION_REQUEST_SENT, TCP_CONNECTING, TCP_CONNECTED, TCP_DISCONNECTED
     }
@@ -287,5 +276,15 @@ public class ConnectionHandler() {
         private const val TAG = "ConnectionHandler"
         private const val UDP_PORT = 20001
         private const val TCP_PORT = 20002
+
+        var singletonObject: ConnectionHandler? = null
+
+        fun getInstance(): ConnectionHandler {
+            if (singletonObject == null) {
+                singletonObject = ConnectionHandler()
+            }
+
+            return singletonObject as ConnectionHandler
+        }
     }
 }
