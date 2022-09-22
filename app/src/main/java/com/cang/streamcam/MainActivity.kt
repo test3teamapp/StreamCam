@@ -36,7 +36,7 @@ import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 
 
-class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsResultCallback {
+class MainActivity : AppCompatActivity(), ActivityCompat.OnRequestPermissionsResultCallback {
     private lateinit var viewBinding: ActivityMainBinding
 
     private var currentLinearZoom: Float = 0f
@@ -48,8 +48,10 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
 
     private lateinit var cameraExecutor: ExecutorService
 
-    private var startCountFrameMillSecs = System.currentTimeMillis()
-    private var numOfFrames = 0
+    private var mStartCountFrameMillSecs = System.currentTimeMillis()
+    private var mNumOfFrames = 0
+    private var mSkipFrames = 0
+    private var mFramesSkipped = 0
 
     /**
      * ID of the current [CameraDevice].
@@ -119,7 +121,6 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
     private var mSensorOrientation = 0
 
 
-
     private val displayManager by lazy {
         this.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
     }
@@ -163,10 +164,10 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
      *
      * @param text The message to show
      */
-    private fun showToast(text: String, showLong:Boolean) {
+    private fun showToast(text: String, showLong: Boolean) {
         if (showLong) {
             this.runOnUiThread { Toast.makeText(this, text, Toast.LENGTH_LONG).show() }
-        }else {
+        } else {
             this.runOnUiThread { Toast.makeText(this, text, Toast.LENGTH_SHORT).show() }
         }
     }
@@ -191,7 +192,7 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
         viewBinding.fpsTextview.setText("fps")
         viewBinding.switchCameraButton.setOnClickListener { switchCamera() }
         viewBinding.speedTextview.setText("-1")
-        viewBinding.stopTcpButton.setOnClickListener{ startStopImageSent()}
+        viewBinding.stopTcpButton.setOnClickListener { startStopImageSent() }
         mTextureView = viewBinding.texture
 
         //// --- PERFORMANCE WHEN CHANGING THIS ?????? ----- /////
@@ -207,10 +208,10 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
         startBackgroundThread()
         LocationProvider.getInstance(this).startLocationUpdates()
         val hasGyro = SenseDataProvider.getInstance(this).findSensors()
-        if (hasGyro){
+        if (hasGyro) {
             showToast("Has Gyro sensor !", true)
             SenseDataProvider.getInstance(this).enableSensors()
-        }else {
+        } else {
             showToast("NO Gyro sensor !", true)
         }
         // When the screen is turned off and turned back on, the SurfaceTexture is already
@@ -269,25 +270,6 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
                     mOnImageAvailableListener, mBackgroundHandler
                 )
                    */
-                // Find out if we need to swap dimension to get the preview size relative to sensor
-                // coordinate.
-
-                val displayRotation = this.windowManager.defaultDisplay.rotation
-                mSensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION)!!
-                var swappedDimensions = false
-                when (displayRotation) {
-                    Surface.ROTATION_0, Surface.ROTATION_180 -> if (mSensorOrientation == 90 || mSensorOrientation == 270) {
-                        swappedDimensions = true
-                    }
-                    Surface.ROTATION_90, Surface.ROTATION_270 -> if (mSensorOrientation == 0 || mSensorOrientation == 180) {
-                        swappedDimensions = true
-                    }
-                    else -> Log.e(
-                        TAG,
-                        "Display rotation is invalid: $displayRotation"
-                    )
-                }
-
 
                 val displaySize = Point()
                 this.windowManager.defaultDisplay.getSize(displaySize)
@@ -295,12 +277,7 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
                 var rotatedPreviewHeight = height
                 var maxPreviewWidth = displaySize.x
                 var maxPreviewHeight = displaySize.y
-                if (swappedDimensions) {
-                    rotatedPreviewWidth = height
-                    rotatedPreviewHeight = width
-                    maxPreviewWidth = displaySize.y
-                    maxPreviewHeight = displaySize.x
-                }
+
                 if (maxPreviewWidth > MAX_PREVIEW_WIDTH) {
                     maxPreviewWidth = MAX_PREVIEW_WIDTH
                 }
@@ -318,6 +295,9 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
                     rotatedPreviewWidth, rotatedPreviewHeight, maxPreviewWidth,
                     maxPreviewHeight, largest
                 )
+
+                //debug
+                Log.i(TAG, "Preview size chosen: " + mPreviewSize.toString())
 
                 // We fit the aspect ratio of TextureView to the size of preview we picked.
                 val orientation: Int = getResources().getConfiguration().orientation
@@ -485,19 +465,20 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
                         mCaptureSession = cameraCaptureSession
                         try {
 
-                            /*
-                             Auto focus should be continuous for camera preview.
+
+                            //Auto focus should be continuous for camera preview.
                             mPreviewRequestBuilder!!.set(
                                 CaptureRequest.CONTROL_AF_MODE,
                                 CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO
                             )
-                            */
+                            /*
                             mPreviewRequestBuilder!!.set(
                                 CaptureRequest.CONTROL_AF_MODE,
                                 CaptureRequest.CONTROL_AF_MODE_OFF,
                             )
+                             */
                             // focus to infinity
-                            mPreviewRequestBuilder!!.set(CaptureRequest.LENS_FOCUS_DISTANCE, 0.0f)
+                            //mPreviewRequestBuilder!!.set(CaptureRequest.LENS_FOCUS_DISTANCE, 0.5f)
 
                             // Flash is automatically enabled when necessary.
                             //setAutoFlash(mPreviewRequestBuilder)
@@ -505,7 +486,7 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
                             // Finally, we start displaying the camera preview.
                             mPreviewRequest = mPreviewRequestBuilder!!.build()
                             mCaptureSession!!.setRepeatingRequest(
-                                mPreviewRequest!!,mCaptureCallback, mBackgroundHandler
+                                mPreviewRequest!!, mCaptureCallback, mBackgroundHandler
                             )
                         } catch (e: CameraAccessException) {
                             e.printStackTrace()
@@ -561,11 +542,11 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
     }
 
     /**
-    * Retrieves the JPEG orientation from the specified screen rotation.
-    *
-    * @param rotation The screen rotation.
-    * @return The JPEG orientation (one of 0, 90, 270, and 360)
-    */
+     * Retrieves the JPEG orientation from the specified screen rotation.
+     *
+     * @param rotation The screen rotation.
+     * @return The JPEG orientation (one of 0, 90, 270, and 360)
+     */
     private fun getOrientation(rotation: Int): Int {
         // Sensor orientation is 90 for most devices, or 270 for some devices (eg. Nexus 5X)
         // We have to take that into account and rotate JPEG properly.
@@ -612,78 +593,86 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
         }
 
         override fun onSurfaceTextureUpdated(texture: SurfaceTexture) {
-            if (mIsSendingImages) {
-                if (mTextureView != null) {
-                    val thread = Thread {
-                        val image: Bitmap? = mTextureView?.bitmap
-                        /*
-                        val resizedBitmap =
-                            image?.let {
-                                Bitmap.createScaledBitmap(
-                                    it,
-                                    MAX_PREVIEW_WIDTH,
-                                    MAX_PREVIEW_HEIGHT,
-                                    false)
-                            }
 
-                         */
-                        val matrix = Matrix()
-
-                        //matrix.postRotate(getOrientation(this@MainActivity.windowManager.defaultDisplay.rotation).toFloat())
-                        matrix.postRotate(270.0f)
-
-                        val rotatedBitmap =
-                            image?.let {
-                                Bitmap.createBitmap(
-                                    it,
-                                    0,
-                                    0,
-                                    it.width,
-                                    it.height,
-                                    matrix,
-                                    false)
-                            }
-
-                        //Convert bitmap to byte array
-                        val bos = ByteArrayOutputStream()
-                        if (rotatedBitmap != null) {
-                            rotatedBitmap.compress(Bitmap.CompressFormat.JPEG, 80, bos)
-                            val jpgdata = bos.toByteArray()
-                            //Log.d(TAG, "jpg image size : ${jpgdata.size} bytes")
-                            // return the data to main executor
-                            //Log.d(TAG,"image captured . size : " + image.width + "x" + image.height)
-                            // try sending
-                            connectionHandler.sendTCP(jpgdata)
-                        }
-                    }
-
-                    thread.start()
-                }
-            }
-            // update speed
-            if (LocationProvider.getInstance(this@MainActivity).lastLocation != null) {
-                viewBinding.speedTextview.setText(
-                    LocationProvider.getInstance(this@MainActivity).lastLocation!!.speed.toString()
-                )
-            }
-            if (numOfFrames == 0) {
-                startCountFrameMillSecs = System.currentTimeMillis()
-                numOfFrames += 1
+            if (mNumOfFrames == 0) {
+                mStartCountFrameMillSecs = System.currentTimeMillis()
+                mNumOfFrames += 1
             } else {
-                if (System.currentTimeMillis() - startCountFrameMillSecs >= 10 * 1000) {
+                if (System.currentTimeMillis() - mStartCountFrameMillSecs >= 10 * 1000) {
                     // every 10 seconds count fps and reset counter
-                    val fps = numOfFrames / 10
-                    numOfFrames = 0
+                    val fps = mNumOfFrames / 10
+                    mNumOfFrames = 0
                     Log.d(TAG, "fps: $fps")
                     // try to touch View of UI thread
                     this@MainActivity.runOnUiThread(Runnable {
                         viewBinding.fpsTextview.setText("$fps")
                     })
+                    // try not to fill the wifi / router buffers and have low latency
+                    if (fps > 10 && fps < 20) {
+                        mSkipFrames = 1
+                    } else if (fps > 20) {
+                        mSkipFrames = 2
+                    }
 
                 } else {
-                    numOfFrames += 1
+                    mNumOfFrames += 1
                 }
             }
+
+            // update speed
+            if (LocationProvider.getInstance(this@MainActivity).lastLocation != null) {
+                this@MainActivity.runOnUiThread(Runnable {
+                    viewBinding.speedTextview.setText(
+                        LocationProvider.getInstance(this@MainActivity).lastLocation!!.speed.toString()
+                    )
+                })
+            }
+
+            if (mSkipFrames >= mFramesSkipped) {
+                mFramesSkipped++
+                return
+            } else {
+                mFramesSkipped = 0
+            }
+
+            if (!mIsSendingImages) return
+            if (mTextureView == null) return
+
+            val thread = Thread {
+                val image: Bitmap? = mTextureView?.bitmap
+                /* //rotate bitmap
+                 val matrix = Matrix()
+
+                 if (image != null) {
+                     matrix.postRotate(270.0f,((image.width / 2).toFloat()), ((image.height /2).toFloat()))
+                 }
+
+                 val rotatedBitmap = image?.let {
+                     Bitmap.createBitmap(
+                         it,
+                         0,
+                         0,
+                         it.width,
+                         it.height,
+                         matrix,
+                         true
+                     )
+                 }*/
+                //Convert bitmap to byte array
+                val bos = ByteArrayOutputStream()
+                if (image != null) {
+                    image.compress(Bitmap.CompressFormat.JPEG, 80, bos)
+                    val jpgdata = bos.toByteArray()
+                    //Log.d(TAG, "jpg image size : ${jpgdata.size} bytes")
+                    // return the data to main executor
+                    //Log.d(TAG,"image captured . size : " + image.width + "x" + image.height)
+                    // try sending
+                    connectionHandler.sendTCP(jpgdata)
+                }
+            }
+
+            thread.start()
+
         }
     }
 
@@ -713,11 +702,11 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
     }
 
     private fun switchZoom() {
-        if(currentLinearZoom == 0.0f){
+        if (currentLinearZoom == 0.0f) {
             currentLinearZoom = 0.5f
-        }else if (currentLinearZoom == 0.5f){
+        } else if (currentLinearZoom == 0.5f) {
             currentLinearZoom = 1.0f
-        }else currentLinearZoom= 0.0f
+        } else currentLinearZoom = 0.0f
 
         //rebindCameraUseCases()
     }
@@ -787,6 +776,7 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
          * Max preview height that is guaranteed by Camera2 API
          */
         private const val MAX_PREVIEW_HEIGHT = 720
+
         /**
          * Conversion from screen rotation to JPEG orientation.
          */
@@ -844,10 +834,7 @@ class MainActivity : AppCompatActivity() , ActivityCompat.OnRequestPermissionsRe
         }
 
         init {
-            ORIENTATIONS.append(Surface.ROTATION_0, 90)
-            ORIENTATIONS.append(Surface.ROTATION_90, 0)
-            ORIENTATIONS.append(Surface.ROTATION_180, 270)
-            ORIENTATIONS.append(Surface.ROTATION_270, 180)
+
         }
     }
 }

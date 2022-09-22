@@ -233,7 +233,7 @@ public class ConnectionHandler private constructor() {
             val sendData = messageStr.toByteArray()
             val sendPacket = DatagramPacket(sendData, sendData.size, broadcastIP, UDP_PORT)
             udpSocket.send(sendPacket)
-            println("fun sendBroadcast: \"$messageStr\" sent to: $broadcastIP:${UDP_PORT}")
+            //println("fun sendBroadcast: \"$messageStr\" sent to: $broadcastIP:${UDP_PORT}")
 
             if (messageStr == "tcp" && (conState != ConnectionState.TCP_CONNECTION_REQUEST_SENT) && (conState != ConnectionState.TCP_CONNECTING)) {
                 // wait for responces
