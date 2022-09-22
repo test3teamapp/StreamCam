@@ -105,8 +105,7 @@ class LocationProvider private constructor(ctx: Context) {
             lastLocation = result.lastLocation as Location
             Log.d("LocProvider/Callback", lastLocation!!.speed.toString())
             // sent over udp
-            if (ConnectionHandler.getInstance().conState.equals(ConnectionHandler.ConnectionState.UDP_OPEN) &&
-                    lastLocation != null) {
+            if (lastLocation != null) {
                 // TODO update StreamCamReceiver.py to receive the "speed:xxx" data
                 ConnectionHandler.getInstance().sendUDP("speed:" + lastLocation!!.speed.toString())
             }

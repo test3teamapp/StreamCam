@@ -15,10 +15,14 @@ class SenseDataProvider private constructor(ctx:Context): SensorEventListener{
     private lateinit var sensorManager: SensorManager
     private lateinit var mainContext: Context
     private  var hasGyro:Boolean = false
+    private var mGyroSensor: Sensor? = null
+
 
     init {
         mainContext = ctx
         sensorManager = mainContext.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        mGyroSensor = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
+
     }
 
     fun findSensors():Boolean{
@@ -30,6 +34,18 @@ class SenseDataProvider private constructor(ctx:Context): SensorEventListener{
             // Failure! No magnetometer.
         }
         return hasGyro
+    }
+
+    fun enableSensors(){
+        mGyroSensor?.also { gyro ->
+            sensorManager.registerListener(this, gyro, SensorManager.SENSOR_DELAY_NORMAL)
+        }
+
+    }
+
+    fun disableSensors(){
+        sensorManager.unregisterListener(this)
+
     }
 
     override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) {
