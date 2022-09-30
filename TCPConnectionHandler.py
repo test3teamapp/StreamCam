@@ -162,6 +162,7 @@ class TCPConnectionHandler:
 
             except BaseException as err:
                 print(f"process_TCPServer: Unexpected {err}, {type(err)}")
+                break
 
         TCPconnection.close()
         TCPServerSocket.close()

@@ -47,7 +47,7 @@ public class ConnectionHandler private constructor() {
 
             try {
                 val networkWriter = DataOutputStream(tcpSocket!!.getOutputStream())
-                // add the size in the first 16 bytes
+                // add the size in the first 4 bytes
                 val newArray = writeIntTo4BytesToBuffer(jpgbytes.size) + jpgbytes
                 networkWriter.write(newArray)
                 networkWriter.flush()
